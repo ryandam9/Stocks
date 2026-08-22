@@ -526,6 +526,10 @@ def test_readme_asset_type_examples_are_valid():
 
 
 def test_asx_stocks_is_absent_and_fails_clearly():
-    """The README states this fails cleanly rather than screening the wrong set."""
+    """ASX common stock is deliberately out of scope.
+
+    The failure must stay clean and explicit, so nobody gets a silently
+    wrong result from asking for a universe that does not exist.
+    """
     with pytest.raises(FileNotFoundError, match="asx_stocks_config.yaml"):
         load_config("ASX", "stocks")

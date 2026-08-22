@@ -110,14 +110,14 @@ available if you want a venue-restricted universe; create
 
 ### ASX coverage
 
-The shipped ASX universe is **exchange-traded funds** (477 of them). There is
-no ASX common-stock universe yet, so `--exchange ASX --instrument-type stocks`
-will fail with a clear "no config file" message rather than screening the wrong
-thing.
+The ASX universe is **exchange-traded funds** (477 of them), by design — ASX
+common stock is deliberately out of scope. `--exchange ASX --instrument-type
+stocks` therefore fails with a clear "no config file" message rather than
+screening the wrong thing.
 
 Two differences from the US universe are worth knowing:
 
-- **`sync` does not work for ASX.** It reads the US exchange symbol directory,
+- **`sync` does not apply to ASX.** It reads the US exchange symbol directory,
   so it only covers `US`, `NASDAQ` and `NYSE`. For ASX, use
   `uv run src/universe.py enrich ASX etf`, which fills metadata for the tickers
   already in the file via per-ticker provider lookups. That path is slower and
