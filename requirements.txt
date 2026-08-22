@@ -1,0 +1,14 @@
+# Pinned deliberately: yfinance makes breaking changes between minor
+# releases and this code depends on its response shape (MultiIndex columns,
+# auto_adjust behaviour). Re-pin only after re-running the tests.
+
+click==8.4.1
+pandas==3.0.3
+PyYAML==6.0.3
+yfinance==1.3.0
+
+# CLI used by scripts/run_analysis.sh to load CSVs into SQLite.
+sqlite-utils>=3.36
+
+# Test-only
+pytest>=8.0

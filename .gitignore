@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Logs
+*.log
+logs/
+
+# Data / outputs (generated, and far too large to track)
+data/
+*.db
+*_eod.csv
+*_growth*.csv
+*_error.csv
+
+# Local env / editors
+.env
+.env.local
+.vscode/
+.idea/
+.DS_Store
+
+# Test / tooling caches
+.pytest_cache/
+.ruff_cache/

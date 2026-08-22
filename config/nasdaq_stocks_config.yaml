@@ -1,0 +1,25 @@
+config:
+  # Input ticker list, resolved against the project root.
+  ticker_file: config/nasdaq_stocks.csv
+
+  # Generated artefacts, resolved against STOCKS_DATA_ROOT if that env var is
+  # set, otherwise against <project_root>/data.
+  data_dir: nasdaq/stocks
+  db_path: nasdaq.db
+
+  analysis:
+    # Prices are USD on NASDAQ.
+    min_price: 10.0
+    # Median daily volume across NASDAQ is ~188k shares; this floor removes
+    # roughly the bottom third, where percentage moves are not realisable.
+    min_median_volume: 50000
+    # Require 80% of the window's calendar span before reporting a ticker for
+    # it, so recent listings do not appear in the longer-window tables.
+    min_coverage: 0.8
+    # Median of N trading days at each endpoint instead of a single close.
+    endpoint_window: 3
+    windows:
+      - {months: 12, label: 1_year, threshold: 25.0}
+      - {months: 6, label: 6_months, threshold: 25.0}
+      - {months: 3, label: 3_months, threshold: 25.0}
+      - {months: 1, label: 1_month, threshold: 10.0}
