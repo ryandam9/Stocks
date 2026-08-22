@@ -446,7 +446,9 @@ def _main() -> None:
     import sys
 
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from config import EXCHANGE_SUFFIXES, load_config
+    from config import EXCHANGE_SUFFIXES, load_config, load_dotenv
+
+    load_dotenv()
 
     usage = (
         "Usage: universe.py <sync|enrich> <EXCHANGE> <INSTRUMENT_TYPE> [--prune]\n"

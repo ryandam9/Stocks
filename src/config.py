@@ -198,6 +198,37 @@ def _require_range(
         raise ValueError(f"{path}: {key} must be in {bound}{low}, {high}], got {value}")
 
 
+def load_dotenv(path: str | None = None) -> dict:
+    """Load ``KEY=VALUE`` pairs from the project's .env file, if present.
+
+    Settings that are machine-specific rather than project-specific (chiefly
+    where generated data lives) belong in an untracked file, not in a variable
+    every command has to remember to export. A real environment variable always
+    wins, so a one-off override still works.
+
+    Returns:
+        The values that were applied.
+    """
+    path = path or os.path.join(PROJECT_ROOT, ".env")
+    applied = {}
+    if not os.path.exists(path):
+        return applied
+
+    with open(path) as handle:
+        for line in handle:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            # An explicitly exported variable takes precedence over the file.
+            if key and key not in os.environ:
+                os.environ[key] = value
+                applied[key] = value
+    return applied
+
+
 def _require_whole_number(raw, key: str, path: str) -> None:
     """Reject a fractional value where an integer is required.
 
@@ -387,6 +418,7 @@ def _main() -> None:
         )
         sys.exit(2)
 
+    load_dotenv()
     exchange, instrument_type, key = sys.argv[1:4]
     try:
         cfg = load_config(exchange, instrument_type)

@@ -7,6 +7,20 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
 
 
+@pytest.fixture(autouse=True)
+def isolate_data_root(monkeypatch):
+    """Stop tests from ever touching the real data directory.
+
+    Tests monkeypatch config.DEFAULT_DATA_ROOT to a tmp path, but
+    load_config prefers the STOCKS_DATA_ROOT environment variable when it is
+    set -- and it is set, in any shell that exports it. That precedence let a
+    plain `pytest` run resolve the *real* configs and overwrite live price
+    data. Clearing it for every test removes the possibility; .env is applied
+    only by command entry points, which tests do not invoke.
+    """
+    monkeypatch.delenv("STOCKS_DATA_ROOT", raising=False)
+
+
 @pytest.fixture
 def latest_date():
     return pd.Timestamp("2026-06-02")

@@ -26,6 +26,7 @@ from config import (
     PROJECT_ROOT,
     AnalysisSettings,
     load_config,
+    load_dotenv,
 )
 from runmeta import (
     RunManifest,
@@ -535,6 +536,7 @@ def analyze_stocks(
     help="Screen the data even if it is older than max_data_age_days",
 )
 def main(exchange, instrument_type, allow_stale):
+    load_dotenv()
     try:
         cfg = load_config(exchange, instrument_type)
         analyze_stocks(cfg, allow_stale=allow_stale)

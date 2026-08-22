@@ -31,6 +31,7 @@ from config import (
     PROJECT_ROOT,
     StockConfig,
     load_config,
+    load_dotenv,
 )
 from runmeta import RunManifest, atomic_write_csv, code_revision, new_run_id
 from universe import default_asset_type_for, filter_universe, load_universe
@@ -611,6 +612,7 @@ def main(
     log_file,
     log_level,
 ):
+    load_dotenv()
     setup_logging(log_level=log_level, log_file=log_file)
 
     if period < 1:

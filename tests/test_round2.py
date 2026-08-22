@@ -621,3 +621,57 @@ def test_enrich_without_prune_keeps_everything(tmp_path, monkeypatch):
 
     df = refresh_universe(str(path), "", default_asset_type="etf")
     assert set(df["ticker"]) == {"ALIVE", "DEAD"}
+
+
+# ------------------------------------------------------------------ test isolation
+
+def test_tests_never_resolve_to_the_real_data_root(monkeypatch):
+    """A pytest run must not be able to write to live data.
+
+    STOCKS_DATA_ROOT takes precedence over the monkeypatched default, so with
+    it set (from the shell or .env) the shipped configs resolved to the real
+    data directory and a fetch test overwrote a live price file.
+    """
+    import config as cfg_mod
+
+    # Simulate the variable being set the way a developer's shell would.
+    monkeypatch.setenv("STOCKS_DATA_ROOT", "/definitely/not/here")
+    # The autouse isolation fixture must already have neutralised it, but a
+    # test that sets it explicitly is asking for it; what must never happen is
+    # a *default* resolution reaching a real location.
+    cfg = cfg_mod.load_config("US", "stocks")
+    assert cfg.db_path.startswith("/definitely/not/here")
+
+
+def test_dotenv_does_not_override_an_explicit_variable(tmp_path, monkeypatch):
+    """A real environment variable must beat the .env file."""
+    import config as cfg_mod
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("STOCKS_DATA_ROOT=/from/dotenv\n")
+    monkeypatch.setenv("STOCKS_DATA_ROOT", "/from/shell")
+
+    applied = cfg_mod.load_dotenv(str(env_file))
+    assert applied == {}
+    assert os.environ["STOCKS_DATA_ROOT"] == "/from/shell"
+
+
+def test_dotenv_applies_when_variable_is_absent(tmp_path, monkeypatch):
+    import config as cfg_mod
+
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "# a comment\n\nSTOCKS_DATA_ROOT=/from/dotenv\nQUOTED=\"with quotes\"\n"
+    )
+    monkeypatch.delenv("STOCKS_DATA_ROOT", raising=False)
+    monkeypatch.delenv("QUOTED", raising=False)
+
+    applied = cfg_mod.load_dotenv(str(env_file))
+    assert applied["STOCKS_DATA_ROOT"] == "/from/dotenv"
+    assert applied["QUOTED"] == "with quotes"
+
+
+def test_dotenv_missing_file_is_harmless(tmp_path):
+    import config as cfg_mod
+
+    assert cfg_mod.load_dotenv(str(tmp_path / "nope.env")) == {}

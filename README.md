@@ -38,8 +38,6 @@ orchestration is Bash-specific.
 **Screen US common stock only** — this is the shipped default; no change needed:
 
 ```bash
-export STOCKS_DATA_ROOT=~/Desktop/temp/data     # optional: keep data outside the repo
-
 uv run src/universe.py sync US stocks           # refresh membership + classification
 ./scripts/fetch_prices.sh US stocks 365         # fetches only common stock
 ./scripts/run_analysis.sh US stocks
@@ -131,11 +129,24 @@ Two differences from the US universe are worth knowing:
 
 ## Where data goes
 
-Generated CSVs and databases are written under `<repo>/data` by default. Set
-`STOCKS_DATA_ROOT` to relocate them:
+Generated CSVs and databases are written under `<repo>/data` by default. To put
+them elsewhere, create a `.env` in the repo root (copy `.env.example`):
 
 ```bash
-export STOCKS_DATA_ROOT=~/Desktop/temp/data
+cp .env.example .env
+# then edit:
+STOCKS_DATA_ROOT=/home/you/market-data
+```
+
+`.env` is untracked and read automatically by every command, so nothing needs
+exporting. An explicitly exported `STOCKS_DATA_ROOT` still overrides it for a
+one-off run.
+
+Check where any command will read and write:
+
+```bash
+uv run src/config.py US stocks db_path
+uv run src/config.py US stocks eod_csv
 ```
 
 Universe files in `config/` are repo inputs and are always read from the repo,
