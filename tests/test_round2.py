@@ -490,3 +490,42 @@ def test_documented_asset_types_match_the_config_whitelist():
     assert documented == VALID_ASSET_TYPES, (
         f"README documents {sorted(documented)}, code allows {sorted(VALID_ASSET_TYPES)}"
     )
+
+
+# ------------------------------------------------------------------ documentation
+
+
+def test_readme_recipes_use_valid_exchange_codes():
+    """Every --exchange / CLI code shown in the README must be real."""
+    import re as _re
+
+    from config import EXCHANGE_SUFFIXES, INSTRUMENTS
+
+    readme = open(os.path.join(PROJECT_ROOT, "README.md")).read()
+    invocations = _re.findall(
+        r"(?:fetch_prices\.sh|run_analysis\.sh|universe\.py (?:sync|enrich)) "
+        r"([A-Z]+) ([a-z]+)",
+        readme,
+    )
+    assert invocations, "no example invocations found in the README"
+    for exchange, instrument in invocations:
+        assert exchange in EXCHANGE_SUFFIXES, f"README uses unknown exchange {exchange}"
+        assert instrument in INSTRUMENTS, f"README uses unknown instrument {instrument}"
+
+
+def test_readme_asset_type_examples_are_valid():
+    """asset_types values shown in the README must be accepted by config."""
+    import re as _re
+
+    from config import VALID_ASSET_TYPES
+
+    readme = open(os.path.join(PROJECT_ROOT, "README.md")).read()
+    for block in _re.findall(r"asset_types: \[([^\]]+)\]", readme):
+        for value in (v.strip() for v in block.split(",")):
+            assert value in VALID_ASSET_TYPES, f"README shows invalid asset_type {value!r}"
+
+
+def test_asx_stocks_is_absent_and_fails_clearly():
+    """The README states this fails cleanly rather than screening the wrong set."""
+    with pytest.raises(FileNotFoundError, match="asx_stocks_config.yaml"):
+        load_config("ASX", "stocks")

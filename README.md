@@ -33,12 +33,72 @@ transitive versions and is what CI and reproducible installs use.
 The Python entry points themselves are cross-platform; only the shell
 orchestration is Bash-specific.
 
+## Common recipes
+
+**Screen US common stock only** — this is the shipped default; no change needed:
+
+```bash
+export STOCKS_DATA_ROOT=~/Desktop/temp/data     # optional: keep data outside the repo
+
+uv run src/universe.py sync US stocks           # refresh membership + classification
+./scripts/fetch_prices.sh US stocks 365         # fetches only common stock
+./scripts/run_analysis.sh US stocks
+```
+
+`config/us_stocks_config.yaml` sets `asset_types: [common_stock]`, and **both**
+stages honour it, so ETFs, warrants, units, rights, preferred lines and notes
+are dropped *before the fetch* rather than after. Each stage confirms it:
+
+```
+Universe: 5750 of 13135 instruments match ['common_stock'] (7385 excluded)
+```
+
+That is ~7,400 provider requests not spent on instruments you would discard.
+
+**Screen ASX ETFs:**
+
+```bash
+./scripts/fetch_prices.sh ASX etf 365
+./scripts/run_analysis.sh ASX etf
+```
+
+**Preview a universe before fetching** — it is plain CSV:
+
+```bash
+awk -F',' '$4=="common_stock"' config/us_stocks.csv | wc -l
+cut -d',' -f4 config/us_stocks.csv | sort | uniq -c | sort -rn
+```
+
+**Restrict to a single venue** — copy the US config to
+`config/nasdaq_stocks_config.yaml`, point `data_dir`/`db_path` somewhere new,
+then sync: `universe.py sync NASDAQ stocks` restricts membership to the Nasdaq
+venue rather than all US exchanges.
+
+**Include instrument types that are normally excluded** — screening warrants or
+unclassified instruments is legitimate, just explicit:
+
+```yaml
+asset_types: [common_stock, unknown]    # also accept unclassified instruments
+asset_types: [common_stock, etf]        # stocks and funds together
+```
+
+**Skip the universe sync** to keep the committed snapshot exactly as-is —
+`sync` replaces membership from the live directory, adding new listings and
+dropping delisted ones. Fetch and analysis work fine without it.
+
+**Screen stale data deliberately** (e.g. the fetch is failing but you want to
+look anyway):
+
+```bash
+./scripts/run_analysis.sh US stocks --allow-stale
+```
+
 ## Supported universes
 
 | `--exchange` | Covers | Shipped config |
 |---|---|---|
 | `US` | The whole US listed universe: Nasdaq, NYSE, NYSE American, NYSE Arca, Cboe BZX, IEX | ✅ `config/us_stocks_config.yaml` |
-| `ASX` | Australian Securities Exchange | ✅ `config/asx_etf_config.yaml` |
+| `ASX` | Australian Securities Exchange — **ETFs only** today | ✅ `config/asx_etf_config.yaml` (`etf`) |
 | `NASDAQ` | Nasdaq-listed only | — add a config to use |
 | `NYSE` | NYSE, NYSE American, NYSE Arca | — add a config to use |
 | `NSE` / `BSE` | India | — add a config to use |
@@ -47,6 +107,27 @@ orchestration is Bash-specific.
 every US venue and links are built per ticker. `NASDAQ` and `NYSE` remain
 available if you want a venue-restricted universe; create
 `config/<exchange>_<type>_config.yaml` and run `universe.py sync` against it.
+
+### ASX coverage
+
+The shipped ASX universe is **exchange-traded funds** (477 of them). There is
+no ASX common-stock universe yet, so `--exchange ASX --instrument-type stocks`
+will fail with a clear "no config file" message rather than screening the wrong
+thing.
+
+Two differences from the US universe are worth knowing:
+
+- **`sync` does not work for ASX.** It reads the US exchange symbol directory,
+  so it only covers `US`, `NASDAQ` and `NYSE`. For ASX, use
+  `uv run src/universe.py enrich ASX etf`, which fills metadata for the tickers
+  already in the file via per-ticker provider lookups. That path is slower and
+  the provider rate-limits it, so the command retries with backoff and reports
+  anything it could not resolve.
+- **Thresholds are tuned per market.** ASX ETFs turn over roughly 8k shares a
+  day against ~188k for US equities, and market-maker creation/redemption means
+  screen volume understates their real liquidity. `config/asx_etf_config.yaml`
+  therefore uses `min_median_volume: 1000` and `min_price: 2.0` (AUD). Applying
+  the US floors here would exclude about 82% of the universe.
 
 ## Where data goes
 
