@@ -208,25 +208,66 @@ than silently publishing one. Fetch logs rotate under `logs/`.
 The image runs any pipeline stage; all state lives on a mounted volume, so the
 container itself is disposable.
 
+### Full pipeline (compose)
+
+Compose is the supported entry point: it is the only thing that reads `.env`,
+forwards AWS credentials, and pins the data volume. Use it unless you have a
+reason not to.
+
+```bash
+cd /path/to/stocks
+
+# Once per shell, and only if you want the S3 upload. Skip it and the run
+# still publishes locally, logging "Skipping S3 upload (...)".
+eval "$(aws configure export-credentials --format env)"
+
+docker compose build          # only after editing src/ or config/
+docker compose run --rm asx   # ASX ETFs:   sync -> fetch -> analyse -> publish -> upload
+docker compose run --rm us    # US stocks:  same
+```
+
+**Pass no arguments.** Each service already carries its full command
+(`all --exchange ASX --instrument-type etf --period 365`). Anything you append
+*replaces* that command rather than adding to it, so `docker compose run --rm us all`
+fails with a usage error — `--exchange` and `--instrument-type` go missing. To
+run one stage, give the whole invocation:
+
+```bash
+docker compose run --rm asx publish --exchange ASX --instrument-type etf
+docker compose run --rm us analyze --exchange US --instrument-type stocks --allow-stale
+docker compose --profile tools run --rm sqlite   # shell to inspect /data
+```
+
+Compose prints `volume "stocks-data" already exists but was not created by
+Docker Compose` if the volume predates the pinned name. It is a warning only;
+the correct volume is still attached.
+
+### Full pipeline (plain docker)
+
+Equivalent, but you supply by hand everything compose would have supplied —
+`.env` is not read by your shell, and the image does not contain it:
+
 ```bash
 docker build -t stocks:dev .
 
-# Whole pipeline for a universe (sync -> fetch -> analyse -> publish)
-docker run --rm -v stocks-data:/data stocks:dev all --exchange US  --instrument-type stocks
-docker run --rm -v stocks-data:/data stocks:dev all --exchange ASX --instrument-type etf
+set -a; source .env; set +a
+eval "$(aws configure export-credentials --format env)"
+
+docker run --rm -v stocks-data:/data -e TZ=UTC \
+  -e S3_BUCKET -e S3_REGION -e S3_AUTO_UPLOAD \
+  -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN \
+  stocks:dev all --exchange ASX --instrument-type etf --period 365
 
 # Individual stages
 docker run --rm -v stocks-data:/data stocks:dev fetch   --exchange US --instrument-type stocks
 docker run --rm -v stocks-data:/data stocks:dev analyze --exchange US --instrument-type stocks --allow-stale
 ```
 
-Or with compose:
+Omitting `-v stocks-data:/data` is the trap: docker creates a fresh anonymous
+volume instead of failing, and the run silently operates on empty data.
 
-```bash
-docker compose run --rm us all
-docker compose run --rm asx all
-docker compose --profile tools run --rm sqlite   # shell to inspect /data
-```
+**Rebuild after editing source.** `COPY src/ ./src/` bakes the code into the
+image. A stale image gives no warning — it just runs the old code.
 
 **Universe seeding.** The committed universes ship inside the image and are
 copied to `/data/universe/` on first run. `sync` and `enrich` then rewrite the
@@ -399,6 +440,33 @@ prefix works too — `S3_BUCKET=s3://your-bucket/daily` writes `daily/us.db`.
 
 Uploads use `boto3`, not the `aws` CLI, so the container image stays small. In
 AWS, give the task an IAM role rather than credentials in the environment.
+
+**In containers, credentials come from the environment.** `.env` is excluded
+from the image, and the container runs as uid 10001 so it cannot read a `0600`
+`~/.aws/credentials` even if that directory were mounted. `docker-compose.yml`
+therefore forwards `AWS_*` from the calling shell:
+
+```bash
+eval "$(aws configure export-credentials --format env)"
+docker compose run --rm asx
+```
+
+The variables are listed by name only in the compose file, so compose omits
+each one when it is unset on the host instead of passing an empty string —
+an empty `AWS_ACCESS_KEY_ID` would short-circuit botocore's credential chain
+rather than falling through to the next provider. On ECS none of them are set
+and the task role supplies credentials.
+
+Every run states which path it took, so the log is never ambiguous:
+
+```
+INFO -   Uploading 0.05 MB -> s3://your-bucket/asx.db
+INFO - Uploaded to s3://your-bucket/asx.db
+```
+
+```
+INFO - Skipping S3 upload (S3_AUTO_UPLOAD is not set; pass --upload to force)
+```
 
 ## How growth is measured
 
