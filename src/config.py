@@ -170,7 +170,7 @@ class StockConfig:
         return self._growth_path("_growth")
 
     def growth_csv(self, label: str) -> str:
-        """Per-window growth summary, e.g. ``nasdaq_stocks_eod_growth_1_year.csv``."""
+        """Per-window growth summary, e.g. ``us_stocks_eod_growth_1_year.csv``."""
         return self._growth_path(f"_growth_{label}")
 
     def _growth_path(self, suffix: str) -> str:
