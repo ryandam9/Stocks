@@ -18,6 +18,8 @@ legacy file in place using the data provider's own metadata.
 
 import os
 import re
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import pandas as pd
 
@@ -189,6 +191,7 @@ def refresh_universe(
     exchange_suffix: str,
     default_asset_type: str = COMMON_STOCK,
     batch_size: int = 50,
+    max_workers: int = 8,
     progress=None,
 ) -> pd.DataFrame:
     """Enrich a universe file with provider exchange and instrument metadata.
@@ -206,34 +209,46 @@ def refresh_universe(
 
     df = load_universe(path, default_asset_type=default_asset_type)
     today = datetime.date.today().isoformat()
-    tickers = df["ticker"].tolist()
+
+    # Only resolve instruments that could actually be screened. Warrants,
+    # units and rights are excluded by name whatever the provider says, and
+    # they are also most of the delisted symbols whose lookups block for
+    # seconds each, so skipping them is the bulk of the speed-up.
+    needs_lookup = [
+        ticker
+        for ticker, name in zip(df["ticker"], df["name"], strict=True)
+        if infer_asset_type(name, default=UNKNOWN) == UNKNOWN
+    ]
 
     resolved_exchange, resolved_type = {}, {}
-    for start in range(0, len(tickers), batch_size):
-        batch = tickers[start : start + batch_size]
-        symbols = [f"{t}.{exchange_suffix}" if exchange_suffix else t for t in batch]
-        try:
-            handles = yf.Tickers(" ".join(symbols)).tickers
-        except Exception:
-            handles = {}
+    lock = threading.Lock()
+    done = 0
 
-        for ticker, symbol in zip(batch, symbols, strict=True):
-            handle = handles.get(symbol) or handles.get(symbol.upper())
-            if handle is None:
-                continue
-            try:
-                metadata = handle.history_metadata or {}
-            except Exception:
-                continue
-            exchange = metadata.get("fullExchangeName") or metadata.get("exchangeName")
+    def resolve(ticker: str) -> None:
+        nonlocal done
+        symbol = f"{ticker}.{exchange_suffix}" if exchange_suffix else ticker
+        try:
+            metadata = yf.Ticker(symbol).history_metadata or {}
+        except Exception:
+            metadata = {}
+
+        exchange = metadata.get("fullExchangeName") or metadata.get("exchangeName")
+        instrument = metadata.get("instrumentType")
+        with lock:
             if exchange:
                 resolved_exchange[ticker] = normalise_exchange(exchange)
-            instrument = metadata.get("instrumentType")
             if instrument:
                 resolved_type[ticker] = _PROVIDER_TYPES.get(str(instrument).upper(), UNKNOWN)
+            done += 1
+            if progress and done % batch_size == 0:
+                progress(done, len(needs_lookup))
 
-        if progress:
-            progress(min(start + batch_size, len(tickers)), len(tickers))
+    # Modest concurrency: the provider was not seen to throttle these
+    # lookups, but there is no reason to lean on it.
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        list(pool.map(resolve, needs_lookup))
+    if progress:
+        progress(len(needs_lookup), len(needs_lookup))
 
     def _exchange(row):
         return resolved_exchange.get(row["ticker"], row["exchange"] or EXCHANGE_UNKNOWN)

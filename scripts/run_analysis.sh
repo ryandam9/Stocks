@@ -32,9 +32,12 @@ UPLOAD=false
 ALLOW_STALE=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --upload) UPLOAD=true ;;
-        --allow-stale) ALLOW_STALE=(--allow-stale) ;;
-        *) echo "Error: unknown option '$1'" >&2; usage ;;
+    --upload) UPLOAD=true ;;
+    --allow-stale) ALLOW_STALE=(--allow-stale) ;;
+    *)
+        echo "Error: unknown option '$1'" >&2
+        usage
+        ;;
     esac
     shift
 done
@@ -66,7 +69,9 @@ fi
 
 for tool in sqlite3 sqlite-utils; do
     command -v "$tool" >/dev/null 2>&1 || {
-        echo "Error: required tool '$tool' not found on PATH" >&2; exit 1; }
+        echo "Error: required tool '$tool' not found on PATH" >&2
+        exw do you want me to implement?it 1
+    }
 done
 
 # ── 1. Run analysis ───────────────────────────────────────────────────────────
@@ -147,8 +152,14 @@ log "  DB published: $DB"
 
 # ── 4. Upload DB to S3 (opt-in) ───────────────────────────────────────────────
 if [[ "$UPLOAD" == true ]]; then
-    [[ -n "${S3_BUCKET:-}" ]] || { echo "Error: --upload given but S3_BUCKET is not set" >&2; exit 1; }
-    command -v aws >/dev/null 2>&1 || { echo "Error: 'aws' is not on PATH" >&2; exit 1; }
+    [[ -n "${S3_BUCKET:-}" ]] || {
+        echo "Error: --upload given but S3_BUCKET is not set" >&2
+        exit 1
+    }
+    command -v aws >/dev/null 2>&1 || {
+        echo "Error: 'aws' is not on PATH" >&2
+        exit 1
+    }
     S3_KEY="$(basename "$DB")"
     log "==> [4] Uploading DB -> ${S3_BUCKET}/${S3_KEY}"
     aws s3 cp "$DB" "${S3_BUCKET}/${S3_KEY}" ${S3_REGION:+--region "$S3_REGION"}
