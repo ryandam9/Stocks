@@ -625,6 +625,7 @@ def test_enrich_without_prune_keeps_everything(tmp_path, monkeypatch):
 
 # ------------------------------------------------------------------ test isolation
 
+
 def test_tests_never_resolve_to_the_real_data_root(monkeypatch):
     """A pytest run must not be able to write to live data.
 
@@ -660,9 +661,7 @@ def test_dotenv_applies_when_variable_is_absent(tmp_path, monkeypatch):
     import config as cfg_mod
 
     env_file = tmp_path / ".env"
-    env_file.write_text(
-        "# a comment\n\nSTOCKS_DATA_ROOT=/from/dotenv\nQUOTED=\"with quotes\"\n"
-    )
+    env_file.write_text('# a comment\n\nSTOCKS_DATA_ROOT=/from/dotenv\nQUOTED="with quotes"\n')
     monkeypatch.delenv("STOCKS_DATA_ROOT", raising=False)
     monkeypatch.delenv("QUOTED", raising=False)
 
@@ -675,3 +674,27 @@ def test_dotenv_missing_file_is_harmless(tmp_path):
     import config as cfg_mod
 
     assert cfg_mod.load_dotenv(str(tmp_path / "nope.env")) == {}
+
+
+def test_readme_documents_only_real_cli_flags():
+    """Every --flag the README shows must exist in the CLI that owns it."""
+    import re as _re
+
+    import click.testing
+
+    import analysis as analysis_mod
+    import fetch_prices as fetch_mod
+
+    readme = open(os.path.join(PROJECT_ROOT, "README.md")).read()
+    runner = click.testing.CliRunner()
+
+    real = set()
+    for module in (fetch_mod, analysis_mod):
+        help_text = runner.invoke(module.main, ["--help"]).output
+        real |= set(_re.findall(r"--[a-z][a-z-]+", help_text))
+    # Flags owned by the shell wrappers and the universe CLI.
+    real |= {"--upload", "--allow-stale", "--prune", "--help"}
+
+    documented = set(_re.findall(r"`(--[a-z][a-z-]+)[ `]", readme))
+    unknown = documented - real
+    assert not unknown, f"README documents non-existent flag(s): {sorted(unknown)}"

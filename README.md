@@ -33,6 +33,176 @@ transitive versions and is what CI and reproducible installs use.
 The Python entry points themselves are cross-platform; only the shell
 orchestration is Bash-specific.
 
+## Where data goes
+
+Generated CSVs and databases are written under `<repo>/data` by default. To put
+them elsewhere, create a `.env` in the repo root (copy `.env.example`):
+
+```bash
+cp .env.example .env
+# then edit:
+STOCKS_DATA_ROOT=/home/you/market-data
+```
+
+`.env` is untracked and read automatically by every command, so nothing needs
+exporting. An explicitly exported `STOCKS_DATA_ROOT` still overrides it for a
+one-off run.
+
+Check where any command will read and write:
+
+```bash
+uv run src/config.py US stocks db_path
+uv run src/config.py US stocks eod_csv
+```
+
+Universe files in `config/` are repo inputs and are always read from the repo,
+regardless of that variable.
+
+## End to end
+
+Two universes ship ready to run: **US stocks** and **ASX ETFs**. Nothing needs
+exporting — `.env` supplies the data location (see [Where data
+goes](#where-data-goes)).
+
+### US stocks — full run
+
+```bash
+cd /path/to/stocks
+
+# 1. Sync the instrument universe from the exchange symbol directory.
+#    Adds new listings, drops delisted ones, and classifies every security.
+#    Optional: skip it to keep the committed snapshot exactly as-is.
+uv run src/universe.py sync US stocks
+
+# 2. Fetch ~1 year of end-of-day prices. Only common stock is requested.
+./scripts/fetch_prices.sh US stocks 365
+
+# 3. Screen for growth and publish the SQLite database.
+./scripts/run_analysis.sh US stocks
+```
+
+What you should see:
+
+```
+# step 1 — nothing changed since the last sync in this example
+Downloading symbol directory for US...
+  13135 symbols (+0 added, -0 removed, 13135 retained)
+Asset types:
+  common_stock 5750 | etf 5670 | preferred 487 | warrant 473 | unit 295 | ...
+
+# step 2
+  Universe: 5750 of 13135 instruments match ['common_stock'] (7385 excluded)
+  Batch 58/58 (50 tickers)
+  FETCH SUMMARY: 5749/5750 tickers fetched successfully
+  Data saved to: .../us/stocks/us_stocks_eod.csv
+
+# step 3
+  Data as of 2026-08-21 (1 day(s) old)
+  --- Tickers with >25.0% growth over the last 1_year ---
+      Universe in window             5,749
+      Enough span                    5,372
+      Enough observations            5,372
+      Still trading                  5,372
+      Adjusted prices                5,372
+      Liquid enough                  4,200
+      Above price floor              2,761
+      Valid baseline                 2,761
+      Return above 25.0%             1,171
+  Loaded 1171 rows -> us_stocks_growth_1_year
+  consistent_growth_stocks: 152 rows
+  DB published: .../us.db
+```
+
+Step 2 takes about 4 minutes; step 3 about 40 seconds.
+
+### ASX ETFs — full run
+
+```bash
+cd /path/to/stocks
+
+# 1. Refresh metadata for the existing universe, dropping delisted funds.
+#    ASX has no bulk symbol directory, so this uses per-ticker lookups and
+#    "sync" does not apply. --prune removes funds the provider no longer
+#    lists, which otherwise fail every fetch forever.
+uv run src/universe.py enrich ASX etf --prune
+
+# 2. Fetch ~1 year of end-of-day prices.
+./scripts/fetch_prices.sh ASX etf 365
+
+# 3. Screen for growth and publish the SQLite database.
+./scripts/run_analysis.sh ASX etf
+```
+
+What you should see:
+
+```
+# step 1
+  Pruned 75 delisted instrument(s)
+  etf 402 | unit 1
+
+# step 2
+  Universe: 402 of 403 instruments match ['etf'] (1 excluded)
+  FETCH SUMMARY: 402/402 tickers fetched successfully
+
+# step 3
+  Data as of 2026-08-21 (1 day(s) old)
+  Loaded 35 rows -> asx_etf_growth_1_year
+  DB published: .../asx.db
+```
+
+The whole ASX run takes under a minute.
+
+### Inspecting the results
+
+```bash
+# Where everything lives
+uv run src/config.py US stocks db_path        # /.../us.db
+uv run src/config.py ASX etf  db_path         # /.../asx.db
+uv run src/config.py US stocks eod_csv
+
+# Top US movers over one year
+sqlite3 -header /path/to/data/us.db "
+  SELECT ticker, exchange, pct_change, ROUND(latest_price,2) AS price, google_finance
+  FROM us_stocks_growth_1_year ORDER BY pct_change DESC LIMIT 10;"
+
+# Tickers that grew in every window
+sqlite3 -header /path/to/data/us.db "SELECT * FROM consistent_growth_stocks;"
+
+# ASX equivalents
+sqlite3 -header /path/to/data/asx.db "
+  SELECT ticker, pct_change FROM asx_etf_growth_1_year ORDER BY pct_change DESC LIMIT 10;"
+
+# What produced this data
+cat /path/to/data/us/stocks/us_stocks_fetch_manifest.json
+cat /path/to/data/us/stocks/us_stocks_analysis_manifest.json
+```
+
+### If a step refuses to run
+
+Both stages fail loudly rather than publishing a doubtful result. Each message
+says what to do:
+
+| Message | Meaning | Fix |
+|---|---|---|
+| `Only 416/477 tickers (87.2%) returned data, below the required 95.0%` | Too much of the universe failed to fetch; the previous price file was left untouched | Usually delisted members: `universe.py enrich <EX> <TYPE> --prune`, then re-fetch. Or `--allow-partial` to publish anyway |
+| `Price data is 81 days old (newest row ..., limit 5 days)` | The price file is stale, so the screen would not reflect the market | Re-run the fetch, or `run_analysis.sh ... --allow-stale` |
+| `No config file for ASX/stocks` | That universe does not exist | Only `US stocks` and `ASX etf` ship; see [Supported universes](#supported-universes) |
+| `Not pruning: N lookups were rate limited` | The provider throttled, so a dead listing cannot be told from a failed lookup | Wait a few minutes and re-run |
+| `required tool 'sqlite-utils' not found on PATH` | Missing CLI dependency | `uv pip install sqlite-utils` |
+
+### Scheduling
+
+Both universes, refreshed daily, with logs kept:
+
+```bash
+# crontab -e  — runs after the US close (ASX times differ; adjust to taste)
+30 22 * * 1-5  cd /path/to/stocks && ./scripts/fetch_prices.sh US stocks 365 && ./scripts/run_analysis.sh US stocks
+0  9  * * 1-5  cd /path/to/stocks && ./scripts/fetch_prices.sh ASX etf 365 && ./scripts/run_analysis.sh ASX etf
+```
+
+Both scripts exit non-zero on failure, so cron will report a bad run rather
+than silently publishing one. Fetch logs rotate under `logs/`.
+
 ## Common recipes
 
 **Screen US common stock only** — this is the shipped default; no change needed:
@@ -127,56 +297,37 @@ Two differences from the US universe are worth knowing:
   therefore uses `min_median_volume: 1000` and `min_price: 2.0` (AUD). Applying
   the US floors here would exclude about 82% of the universe.
 
-## Where data goes
+## Command reference
 
-Generated CSVs and databases are written under `<repo>/data` by default. To put
-them elsewhere, create a `.env` in the repo root (copy `.env.example`):
+Every stage is also a Python entry point, useful when you want options the
+shell wrappers do not expose:
 
 ```bash
-cp .env.example .env
-# then edit:
-STOCKS_DATA_ROOT=/home/you/market-data
+uv run src/fetch_prices.py  --exchange US --instrument-type stocks \
+    --period 365 --batch-size 100 --min-success-ratio 0.95 --log-file logs/us.log
+uv run src/analysis.py      --exchange US --instrument-type stocks [--allow-stale]
+uv run src/universe.py      sync US stocks          # membership + class (US only)
+uv run src/universe.py      enrich ASX etf [--prune]  # metadata, any market
+uv run src/config.py        US stocks db_path       # resolve any config value
 ```
 
-`.env` is untracked and read automatically by every command, so nothing needs
-exporting. An explicitly exported `STOCKS_DATA_ROOT` still overrides it for a
-one-off run.
+Useful flags:
 
-Check where any command will read and write:
+| Flag | Stage | Effect |
+|---|---|---|
+| `--period N` | fetch | Days of history to request (default 365) |
+| `--batch-size N` | fetch | Symbols per provider request (default 100) |
+| `--min-success-ratio F` | fetch | Completeness gate (default 0.95) |
+| `--allow-partial` | fetch | Publish even below that ratio |
+| `--allow-stale` | analysis | Screen price data older than `max_data_age_days` |
+| `--prune` | universe enrich | Drop instruments the provider no longer lists |
+| `--upload` | run_analysis.sh | Upload the DB to S3 (needs `S3_BUCKET`) |
 
-```bash
-uv run src/config.py US stocks db_path
-uv run src/config.py US stocks eod_csv
-```
-
-Universe files in `config/` are repo inputs and are always read from the repo,
-regardless of that variable.
-
-## Usage
+Uploading the published database to S3:
 
 ```bash
-# 1. Sync the instrument universe from the exchange symbol directory
-uv run src/universe.py sync US stocks
-
-# 2. Fetch prices (logs to logs/, rotated)
-./scripts/fetch_prices.sh US stocks 365
-
-# 3. Analyse growth and load into SQLite
-./scripts/run_analysis.sh US stocks
-
-# Optional: upload the DB to S3
 S3_BUCKET=s3://your-bucket S3_REGION=ap-southeast-2 \
   ./scripts/run_analysis.sh US stocks --upload
-```
-
-Python entry points, for more control:
-
-```bash
-uv run src/fetch_prices.py --exchange US --instrument-type stocks \
-    --period 365 --batch-size 100
-uv run src/analysis.py --exchange US --instrument-type stocks
-uv run src/universe.py sync US stocks       # membership + class, US directory
-uv run src/universe.py enrich ASX etf           # metadata only, any market
 ```
 
 ## How growth is measured
