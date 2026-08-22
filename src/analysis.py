@@ -27,6 +27,7 @@ from config import (
     AnalysisSettings,
     load_config,
     load_dotenv,
+    settings_for_window,
 )
 from runmeta import (
     RunManifest,
@@ -183,11 +184,27 @@ def _endpoint_prices(window_df: pd.DataFrame, n: int) -> pd.DataFrame:
     return pd.DataFrame({"first_price": first, "last_price": last})
 
 
+def window_cutoff(latest_date: pd.Timestamp, window: dict) -> pd.Timestamp:
+    """Start of a trailing window, which may be given in months or days."""
+    if "days" in window:
+        return latest_date - pd.Timedelta(days=int(window["days"]))
+    return latest_date - pd.DateOffset(months=int(window["months"]))
+
+
+def window_label_short(window: dict) -> str:
+    """Short form used in growth_periods and Google Finance links."""
+    if "days" in window:
+        days = int(window["days"])
+        # Google Finance has no arbitrary-day range; 5D is the closest chart.
+        return "5D" if days <= 7 else f"{days}D"
+    return GF_WINDOW.get(int(window["months"]), "1Y")
+
+
 def _window_stats(
-    df: pd.DataFrame, months: int, settings: AnalysisSettings, latest_date: pd.Timestamp
+    df: pd.DataFrame, window: dict, settings: AnalysisSettings, latest_date: pd.Timestamp
 ) -> tuple[pd.DataFrame, int]:
     """Per-ticker aggregates for one window, plus the window's calendar length."""
-    cutoff = latest_date - pd.DateOffset(months=months)
+    cutoff = window_cutoff(latest_date, window)
     window_df = df[df["stock_price_date"] >= cutoff]
     if window_df.empty:
         return pd.DataFrame(), 0
@@ -216,7 +233,7 @@ def _window_stats(
 
 def compute_window_growth(
     df: pd.DataFrame,
-    months: int,
+    window: dict,
     threshold: float,
     settings: AnalysisSettings,
     latest_date: pd.Timestamp,
@@ -228,7 +245,7 @@ def compute_window_growth(
 
     Args:
         df: normalised price data for all tickers.
-        months: window length in months.
+        window: window definition, carrying either ``months`` or ``days``.
         threshold: minimum percentage change to qualify.
         settings: eligibility thresholds.
         latest_date: most recent date present in ``df``.
@@ -240,7 +257,7 @@ def compute_window_growth(
     Returns:
         (qualifying tickers sorted by pct_change desc, funnel stage counts)
     """
-    stats, _ = _window_stats(df, months, settings, latest_date)
+    stats, _ = _window_stats(df, window, settings, latest_date)
     if stats.empty:
         return pd.DataFrame(columns=GROWTH_COLUMNS), [("Universe in window", 0)]
 
@@ -317,7 +334,7 @@ def compute_window_growth(
         + ":"
         + result.loc[known, "exchange"].str.upper()
         + "?window="
-        + GF_WINDOW.get(months, "1Y")
+        + window_label_short(window)
     )
 
     return result[GROWTH_COLUMNS].sort_values("pct_change", ascending=False), funnel
@@ -490,22 +507,28 @@ def analyze_stocks(
             f"uv run src/universe.py refresh {cfg.exchange} {cfg.instrument_type}"
         )
 
-    abbreviations = {
-        str(w["label"]): GF_WINDOW.get(int(w["months"]), str(w["label"])) for w in settings.windows
-    }
+    abbreviations = {str(w["label"]): window_label_short(w) for w in settings.windows}
 
     results: dict[str, pd.DataFrame] = {}
     outputs: dict[str, Any] = {}
     counts: dict[str, Any] = {}
 
     for window in settings.windows:
-        months = int(window["months"])
         label = str(window["label"])
         threshold = float(window["threshold"])
+        # Short windows need looser endpoint/coverage rules than a 1-year one.
+        window_settings = settings_for_window(settings, window)
 
         print(f"\n--- Tickers with >{threshold}% growth over the last {label} ---")
         result, funnel = compute_window_growth(
-            df, months, threshold, settings, latest_date, cfg.exchange, screened, run_id
+            df,
+            window,
+            threshold,
+            window_settings,
+            latest_date,
+            cfg.exchange,
+            screened,
+            run_id,
         )
         _print_funnel(funnel)
         results[label] = result

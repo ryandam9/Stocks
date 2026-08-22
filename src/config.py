@@ -12,7 +12,7 @@ outside the repository without editing any config file.
 import math
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import yaml
 
@@ -121,6 +121,10 @@ class AnalysisSettings:
     # Number of trading days median-averaged at each endpoint. 1 restores
     # single-day behaviour; 3 removes most single-print noise.
     endpoint_window: int = 3
+    # Any of the eligibility settings below may be overridden per window, which
+    # short windows need: a 7-day window holds only ~5 sessions, too few for a
+    # 3-day endpoint median at either end.
+    #
     # Fraction of the window's *expected trading sessions* a ticker must
     # actually have. Distinct from min_coverage, which only checks that the
     # first and last observations span the window: a ticker with two prints a
@@ -137,6 +141,26 @@ class AnalysisSettings:
     # charting. The screen results themselves are unaffected.
     include_price_history: bool = False
     windows: list[dict] = field(default_factory=lambda: list(DEFAULT_WINDOWS))
+
+
+WINDOW_OVERRIDABLE = (
+    "min_price",
+    "min_median_volume",
+    "min_coverage",
+    "min_observation_ratio",
+    "endpoint_window",
+)
+
+
+def settings_for_window(settings: "AnalysisSettings", window: dict) -> "AnalysisSettings":
+    """Return ``settings`` with any per-window overrides applied."""
+    overrides = {k: window[k] for k in WINDOW_OVERRIDABLE if k in window}
+    if not overrides:
+        return settings
+    return replace(
+        settings,
+        **{k: int(v) if k == "endpoint_window" else float(v) for k, v in overrides.items()},
+    )
 
 
 @dataclass
@@ -330,10 +354,16 @@ def load_config(exchange: str, instrument_type: str) -> StockConfig:
     analysis_raw = section.get("analysis") or {}
     windows = analysis_raw.get("windows") or DEFAULT_WINDOWS
     for window in windows:
-        missing = {"months", "label", "threshold"} - set(window)
+        missing = {"label", "threshold"} - set(window)
         if missing:
             raise KeyError(
                 f"{path}: analysis window {window} is missing key(s): {', '.join(sorted(missing))}"
+            )
+        # Length is given either in months or in days, never both: a window
+        # carrying both would silently use one and ignore the other.
+        if ("months" in window) == ("days" in window):
+            raise ValueError(
+                f"{path}: window '{window['label']}' must specify exactly one of 'months' or 'days'"
             )
 
     _require_range(analysis_raw, "min_coverage", 0.0, 1.0, path, exclusive_min=True)
@@ -369,9 +399,6 @@ def load_config(exchange: str, instrument_type: str) -> StockConfig:
         if not raw_types:
             raise ValueError(f"{path}: asset_types must not be empty")
 
-    for window in windows:
-        _require_whole_number(window["months"], f"window '{window['label']}' months", path)
-
     labels = [str(w["label"]) for w in windows]
     duplicates = {label for label in labels if labels.count(label) > 1}
     if duplicates:
@@ -386,8 +413,18 @@ def load_config(exchange: str, instrument_type: str) -> StockConfig:
                 "safe in filenames and SQLite identifiers"
             )
     for window in windows:
-        if int(window["months"]) < 1:
-            raise ValueError(f"{path}: window '{window['label']}' needs months >= 1")
+        unit = "months" if "months" in window else "days"
+        _require_whole_number(window[unit], f"window '{window['label']}' {unit}", path)
+        if int(window[unit]) < 1:
+            raise ValueError(f"{path}: window '{window['label']}' needs {unit} >= 1")
+        for key, low, high in [
+            ("min_coverage", 0.0, 1.0),
+            ("min_observation_ratio", 0.0, 1.0),
+        ]:
+            _require_range(window, key, low, high, path)
+        _require_positive(window, "endpoint_window", path, integer=True)
+        for key in ("min_price", "min_median_volume"):
+            _require_non_negative(window, key, path)
 
     analysis = AnalysisSettings(
         min_price=float(analysis_raw.get("min_price", 10.0)),

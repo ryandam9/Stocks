@@ -166,7 +166,7 @@ def test_sparse_history_fails_observation_coverage(build_frame, latest_date):
         endpoint_window=1,
         min_observation_ratio=0.5,
     )
-    result, _ = compute_window_growth(df, 12, 25.0, settings, latest_date, "US")
+    result, _ = compute_window_growth(df, {"months": 12}, 25.0, settings, latest_date, "US")
     tickers = set(result["ticker"])
     assert "DENSE" in tickers
     assert "SPARSE" not in tickers
@@ -183,7 +183,9 @@ def test_endpoint_windows_may_not_overlap(build_frame, latest_date):
         endpoint_window=3,
         min_observation_ratio=0.0,
     )
-    result, _ = compute_window_growth(build_frame(tiny), 12, 25.0, settings, latest_date, "US")
+    result, _ = compute_window_growth(
+        build_frame(tiny), {"months": 12}, 25.0, settings, latest_date, "US"
+    )
     assert result.empty
 
 
@@ -210,7 +212,7 @@ def test_raw_fallback_prices_are_excluded(build_frame, latest_date):
         min_observation_ratio=0.0,
     )
     result, funnel = compute_window_growth(
-        build_frame(good, raw), 12, 25.0, settings, latest_date, "US"
+        build_frame(good, raw), {"months": 12}, 25.0, settings, latest_date, "US"
     )
     assert set(result["ticker"]) == {"ADJ"}
     assert dict(funnel)["Adjusted prices"] == 1
@@ -229,7 +231,9 @@ def test_unknown_price_basis_is_screened_with_a_warning(build_frame, latest_date
         endpoint_window=1,
         min_observation_ratio=0.0,
     )
-    result, _ = compute_window_growth(build_frame(legacy), 12, 25.0, settings, latest_date, "US")
+    result, _ = compute_window_growth(
+        build_frame(legacy), {"months": 12}, 25.0, settings, latest_date, "US"
+    )
     assert set(result["ticker"]) == {"OLD"}
 
 
@@ -311,7 +315,7 @@ def test_funnel_reports_every_rule(build_frame, latest_date):
         endpoint_window=1,
         min_observation_ratio=0.0,
     )
-    _, funnel = compute_window_growth(df, 12, 25.0, settings, latest_date, "US")
+    _, funnel = compute_window_growth(df, {"months": 12}, 25.0, settings, latest_date, "US")
     stages = [label for label, _ in funnel]
     assert stages == [
         "Universe in window",

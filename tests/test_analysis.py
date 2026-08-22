@@ -20,12 +20,16 @@ LOOSE = AnalysisSettings(
 
 def growth(df, latest_date, months=12, threshold=25.0, settings=LOOSE):
     """Return just the result table; the funnel is asserted separately."""
-    result, _funnel = compute_window_growth(df, months, threshold, settings, latest_date, "US")
+    result, _funnel = compute_window_growth(
+        df, {"months": months}, threshold, settings, latest_date, "US"
+    )
     return result.reset_index(drop=True)
 
 
 def funnel_of(df, latest_date, months=12, threshold=25.0, settings=LOOSE):
-    _result, funnel = compute_window_growth(df, months, threshold, settings, latest_date, "US")
+    _result, funnel = compute_window_growth(
+        df, {"months": months}, threshold, settings, latest_date, "US"
+    )
     return dict(funnel)
 
 

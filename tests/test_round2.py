@@ -13,7 +13,7 @@ import analysis
 import config as cfg_mod
 import fetch_prices
 from analysis import _worst_price_basis, compute_window_growth
-from config import AnalysisSettings, growth_schema_sql, load_config
+from config import AnalysisSettings, growth_schema_sql, load_config, settings_for_window
 from runmeta import atomic_write_csv, atomic_write_text
 from symbol_directory import US_EXCHANGES, classify_security_name, fetch_symbol_directory
 from universe import default_asset_type_for, filter_universe, load_universe, sync_universe
@@ -336,7 +336,7 @@ def test_mixed_price_basis_degrades_to_the_worst(build_frame, latest_date):
         min_observation_ratio=0.0,
     )
     result, funnel = compute_window_growth(
-        build_frame(series), 12, 25.0, settings, latest_date, "US"
+        build_frame(series), {"months": 12}, 25.0, settings, latest_date, "US"
     )
     assert result.empty
     assert dict(funnel)["Adjusted prices"] == 0
@@ -744,3 +744,76 @@ def test_disabling_history_removes_a_previous_run_s_file(tmp_path, monkeypatch):
 def test_include_price_history_must_be_boolean(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="include_price_history must be true or false"):
         build_project(tmp_path, monkeypatch, include_price_history="yes")
+
+
+# ------------------------------------------------------------------ day windows
+
+
+def test_day_window_cutoff():
+    from analysis import window_cutoff
+
+    latest = pd.Timestamp("2026-08-21")
+    assert window_cutoff(latest, {"days": 7}) == pd.Timestamp("2026-08-14")
+    assert window_cutoff(latest, {"months": 1}) == pd.Timestamp("2026-07-21")
+
+
+def test_day_window_screens_a_short_period(build_frame):
+    """A 7-day window must measure the last 7 days, not a longer period.
+
+    The fixture falls over the month but rises sharply in the final week, so
+    only a genuinely short window can report growth.
+    """
+    latest = pd.Timestamp("2026-08-21")
+    decline = make_series("REBOUND", "Rebound", "2026-07-01", "2026-08-14", 200, 100)
+    rally = make_series("REBOUND", "Rebound", "2026-08-17", "2026-08-21", 100, 130)
+    df = build_frame(pd.concat([decline, rally], ignore_index=True))
+
+    loose = {"min_price": 0.0, "min_median_volume": 0.0, "min_observation_ratio": 0.0}
+
+    week = {"days": 7, "label": "7_days", "threshold": 10.0,
+            "endpoint_window": 2, "min_coverage": 0.5}
+    weekly, _ = compute_window_growth(
+        df, week, 10.0, settings_for_window(AnalysisSettings(**loose), week), latest, "US"
+    )
+    assert set(weekly["ticker"]) == {"REBOUND"}
+    assert weekly["pct_change"].iloc[0] > 10
+
+    # Over a month the same ticker is down, so it must not qualify.
+    monthly, _ = compute_window_growth(
+        df, {"months": 1, "label": "1_month", "threshold": 10.0}, 10.0,
+        AnalysisSettings(endpoint_window=1, **loose), latest, "US",
+    )
+    assert monthly.empty, "a falling month must not be reported as growth"
+
+
+def test_per_window_overrides_apply():
+    from config import settings_for_window
+
+    base = AnalysisSettings(endpoint_window=3, min_coverage=0.8, min_price=10.0)
+    tuned = settings_for_window(base, {"endpoint_window": 2, "min_coverage": 0.5})
+    assert (tuned.endpoint_window, tuned.min_coverage) == (2, 0.5)
+    assert tuned.min_price == 10.0, "unspecified settings are inherited"
+    # The base object must not be mutated.
+    assert (base.endpoint_window, base.min_coverage) == (3, 0.8)
+
+
+def test_window_must_specify_exactly_one_unit(tmp_path, monkeypatch):
+    for windows, expected in [
+        ([{"label": "x", "threshold": 1.0}], "exactly one"),
+        ([{"months": 1, "days": 7, "label": "x", "threshold": 1.0}], "exactly one"),
+    ]:
+        with pytest.raises(ValueError, match=expected):
+            build_project(tmp_path, monkeypatch, windows=windows)
+
+
+def test_day_window_link_uses_a_valid_chart_range():
+    from analysis import window_label_short
+
+    assert window_label_short({"days": 7}) == "5D"
+    assert window_label_short({"months": 12}) == "1Y"
+
+
+def test_shipped_configs_have_the_seven_day_window():
+    for exchange, instrument in [("US", "stocks"), ("ASX", "etf")]:
+        cfg = load_config(exchange, instrument)
+        assert "7_days" in cfg.growth_labels

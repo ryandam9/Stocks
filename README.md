@@ -506,7 +506,20 @@ config:
       - {months: 6, label: 6_months, threshold: 25.0}
       - {months: 3, label: 3_months, threshold: 25.0}
       - {months: 1, label: 1_month, threshold: 10.0}
+      - {days: 7, label: 7_days, threshold: 10.0, endpoint_window: 2, min_coverage: 0.5}
 ```
+
+### Windows
+
+Each window gives its length as either `months` or `days` (exactly one), a
+`label` used for its filename and SQLite table, and a `threshold` percentage.
+
+Any eligibility setting may be overridden per window — `endpoint_window`,
+`min_coverage`, `min_observation_ratio`, `min_price`, `min_median_volume` —
+which short windows need. A 7-day window holds only 5–6 trading sessions, so
+the default 3-day endpoint median would leave no room between the two ends and
+a holiday-shortened week would exclude everything. `endpoint_window: 2` still
+medians each end while tolerating a 5-session week.
 
 Values are validated at load: ranges are checked, and window labels must be
 unique and safe as filenames and SQLite identifiers.
