@@ -24,7 +24,7 @@ def build_project(tmp_path, monkeypatch, windows=None, **analysis_overrides):
     """Create a self-contained project tree and return its resolved config."""
     (tmp_path / "config").mkdir(exist_ok=True)
     data_root = tmp_path / "data"
-    (data_root / "nasdaq" / "stocks").mkdir(parents=True, exist_ok=True)
+    (data_root / "us" / "stocks").mkdir(parents=True, exist_ok=True)
 
     analysis = {
         "min_price": 0.0,
@@ -38,13 +38,13 @@ def build_project(tmp_path, monkeypatch, windows=None, **analysis_overrides):
     }
     analysis.update(analysis_overrides)
 
-    (tmp_path / "config" / "nasdaq_stocks_config.yaml").write_text(
+    (tmp_path / "config" / "us_stocks_config.yaml").write_text(
         yaml.safe_dump(
             {
                 "config": {
                     "ticker_file": "config/universe.csv",
-                    "data_dir": "nasdaq/stocks",
-                    "db_path": "nasdaq.db",
+                    "data_dir": "us/stocks",
+                    "db_path": "us.db",
                     "analysis": analysis,
                 }
             }
@@ -52,7 +52,7 @@ def build_project(tmp_path, monkeypatch, windows=None, **analysis_overrides):
     )
     monkeypatch.setattr(cfg_mod, "PROJECT_ROOT", str(tmp_path))
     monkeypatch.setattr(cfg_mod, "DEFAULT_DATA_ROOT", str(data_root))
-    return load_config("NASDAQ", "stocks")
+    return load_config("US", "stocks")
 
 
 def write_universe(cfg, rows):
@@ -165,7 +165,7 @@ def test_sparse_history_fails_observation_coverage(build_frame, latest_date):
         endpoint_window=1,
         min_observation_ratio=0.5,
     )
-    result, _ = compute_window_growth(df, 12, 25.0, settings, latest_date, "NASDAQ")
+    result, _ = compute_window_growth(df, 12, 25.0, settings, latest_date, "US")
     tickers = set(result["ticker"])
     assert "DENSE" in tickers
     assert "SPARSE" not in tickers
@@ -182,7 +182,7 @@ def test_endpoint_windows_may_not_overlap(build_frame, latest_date):
         endpoint_window=3,
         min_observation_ratio=0.0,
     )
-    result, _ = compute_window_growth(build_frame(tiny), 12, 25.0, settings, latest_date, "NASDAQ")
+    result, _ = compute_window_growth(build_frame(tiny), 12, 25.0, settings, latest_date, "US")
     assert result.empty
 
 
@@ -209,7 +209,7 @@ def test_raw_fallback_prices_are_excluded(build_frame, latest_date):
         min_observation_ratio=0.0,
     )
     result, funnel = compute_window_growth(
-        build_frame(good, raw), 12, 25.0, settings, latest_date, "NASDAQ"
+        build_frame(good, raw), 12, 25.0, settings, latest_date, "US"
     )
     assert set(result["ticker"]) == {"ADJ"}
     assert dict(funnel)["Adjusted prices"] == 1
@@ -228,9 +228,7 @@ def test_unknown_price_basis_is_screened_with_a_warning(build_frame, latest_date
         endpoint_window=1,
         min_observation_ratio=0.0,
     )
-    result, _ = compute_window_growth(
-        build_frame(legacy), 12, 25.0, settings, latest_date, "NASDAQ"
-    )
+    result, _ = compute_window_growth(build_frame(legacy), 12, 25.0, settings, latest_date, "US")
     assert set(result["ticker"]) == {"OLD"}
 
 
@@ -312,7 +310,7 @@ def test_funnel_reports_every_rule(build_frame, latest_date):
         endpoint_window=1,
         min_observation_ratio=0.0,
     )
-    _, funnel = compute_window_growth(df, 12, 25.0, settings, latest_date, "NASDAQ")
+    _, funnel = compute_window_growth(df, 12, 25.0, settings, latest_date, "US")
     stages = [label for label, _ in funnel]
     assert stages == [
         "Universe in window",
@@ -408,7 +406,7 @@ def test_fetch_requests_an_exclusive_end_past_today(tmp_path, monkeypatch):
         return pd.DataFrame()
 
     monkeypatch.setattr(fetch_prices.yf, "download", fake_download)
-    fetcher = fetch_prices.YahooFinanceDataFetcher("NASDAQ", "stocks", period=30)
+    fetcher = fetch_prices.YahooFinanceDataFetcher("US", "stocks", period=30)
     fetcher.fetch_historical_data()
 
     today = pd.Timestamp.now().normalize()

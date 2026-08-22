@@ -3,7 +3,7 @@
 # Usage: fetch_prices.sh <EXCHANGE> <INSTRUMENT_TYPE> [PERIOD_DAYS]
 #
 # Fetches historical EOD price data from Yahoo Finance via src/fetch_prices.py.
-#   EXCHANGE        Exchange code: NSE, BSE, NYSE, NASDAQ, ASX
+#   EXCHANGE        Exchange code: US, ASX, NSE, BSE, NYSE, NASDAQ
 #   INSTRUMENT_TYPE Instrument type: stocks, etf
 #   PERIOD_DAYS     Days of history to fetch (default: 365)
 #
@@ -14,7 +14,7 @@ set -euo pipefail
 
 usage() {
     echo "Usage: $(basename "$0") <EXCHANGE> <INSTRUMENT_TYPE> [PERIOD_DAYS]" >&2
-    echo "  e.g. $(basename "$0") NASDAQ stocks 365" >&2
+    echo "  e.g. $(basename "$0") US stocks 365" >&2
     exit 1
 }
 

@@ -233,13 +233,13 @@ def test_error_csv_is_rewritten_after_a_clean_run(tmp_path, monkeypatch):
     import fetch_prices
 
     (tmp_path / "config").mkdir()
-    (tmp_path / "config" / "nasdaq_stocks_config.yaml").write_text(
+    (tmp_path / "config" / "us_stocks_config.yaml").write_text(
         yaml.safe_dump(
             {
                 "config": {
                     "ticker_file": "config/universe.csv",
-                    "data_dir": "nasdaq/stocks",
-                    "db_path": "nasdaq.db",
+                    "data_dir": "us/stocks",
+                    "db_path": "us.db",
                 }
             }
         )
@@ -250,7 +250,7 @@ def test_error_csv_is_rewritten_after_a_clean_run(tmp_path, monkeypatch):
 
     # Run 1: the provider returns nothing, so AAA is recorded as failed.
     monkeypatch.setattr(fetch_prices.yf, "download", lambda *a, **k: pd.DataFrame())
-    fetcher = fetch_prices.YahooFinanceDataFetcher("NASDAQ", "stocks", period=30)
+    fetcher = fetch_prices.YahooFinanceDataFetcher("US", "stocks", period=30)
     fetcher.fetch_historical_data()
 
     with open(fetcher.config.error_csv, newline="") as handle:
@@ -266,7 +266,7 @@ def test_error_csv_is_rewritten_after_a_clean_run(tmp_path, monkeypatch):
         return pd.DataFrame(1.0, index=index, columns=columns)
 
     monkeypatch.setattr(fetch_prices.yf, "download", good_download)
-    fetcher = fetch_prices.YahooFinanceDataFetcher("NASDAQ", "stocks", period=30)
+    fetcher = fetch_prices.YahooFinanceDataFetcher("US", "stocks", period=30)
     data = fetcher.fetch_historical_data()
     assert not data.empty
 

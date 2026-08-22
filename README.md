@@ -33,6 +33,21 @@ transitive versions and is what CI and reproducible installs use.
 The Python entry points themselves are cross-platform; only the shell
 orchestration is Bash-specific.
 
+## Supported universes
+
+| `--exchange` | Covers | Shipped config |
+|---|---|---|
+| `US` | The whole US listed universe: Nasdaq, NYSE, NYSE American, NYSE Arca, Cboe BZX, IEX | ✅ `config/us_stocks_config.yaml` |
+| `ASX` | Australian Securities Exchange | ✅ `config/asx_etf_config.yaml` |
+| `NASDAQ` | Nasdaq-listed only | — add a config to use |
+| `NYSE` | NYSE, NYSE American, NYSE Arca | — add a config to use |
+| `NSE` / `BSE` | India | — add a config to use |
+
+`US` is the shipped US universe because the exchange symbol directory covers
+every US venue and links are built per ticker. `NASDAQ` and `NYSE` remain
+available if you want a venue-restricted universe; create
+`config/<exchange>_<type>_config.yaml` and run `universe.py sync` against it.
+
 ## Where data goes
 
 Generated CSVs and databases are written under `<repo>/data` by default. Set
@@ -49,26 +64,26 @@ regardless of that variable.
 
 ```bash
 # 1. Sync the instrument universe from the exchange symbol directory
-uv run src/universe.py sync NASDAQ stocks
+uv run src/universe.py sync US stocks
 
 # 2. Fetch prices (logs to logs/, rotated)
-./scripts/fetch_prices.sh NASDAQ stocks 365
+./scripts/fetch_prices.sh US stocks 365
 
 # 3. Analyse growth and load into SQLite
-./scripts/run_analysis.sh NASDAQ stocks
+./scripts/run_analysis.sh US stocks
 
 # Optional: upload the DB to S3
 S3_BUCKET=s3://your-bucket S3_REGION=ap-southeast-2 \
-  ./scripts/run_analysis.sh NASDAQ stocks --upload
+  ./scripts/run_analysis.sh US stocks --upload
 ```
 
 Python entry points, for more control:
 
 ```bash
-uv run src/fetch_prices.py --exchange NASDAQ --instrument-type stocks \
+uv run src/fetch_prices.py --exchange US --instrument-type stocks \
     --period 365 --batch-size 100
-uv run src/analysis.py --exchange NASDAQ --instrument-type stocks
-uv run src/universe.py sync NASDAQ stocks       # membership + class, US directory
+uv run src/analysis.py --exchange US --instrument-type stocks
+uv run src/universe.py sync US stocks       # membership + class, US directory
 uv run src/universe.py enrich ASX etf           # metadata only, any market
 ```
 
@@ -149,9 +164,47 @@ AACBR  Artius II Acquisition Inc. - Rights                    right
 AACBU  Artius II Acquisition Inc. - Units                     unit
 ```
 
-An instrument whose class cannot be established is recorded as `unknown` and
-**excluded** from screens unless `asset_types` names it explicitly, so a
-derivative can never enter a screen by defaulting into common stock.
+### Instrument types
+
+Every instrument is classified into exactly one `asset_type`. `asset_types` in
+the config selects which of them a screen covers.
+
+| `asset_type` | What it is | In screens by default |
+|---|---|---|
+| `common_stock` | Ordinary equity: common stock, ordinary shares, capital stock, subordinate voting shares, ADRs/ADSs and registry shares, REITs, BDCs, and MLP common units | ✅ for `stocks` |
+| `etf` | Pooled vehicles: exchange-traded funds and closed-end funds (from the directory's authoritative ETF flag) | ✅ for `etf` |
+| `warrant` | Warrants — a right to buy shares later, not the shares | ❌ |
+| `unit` | SPAC units, usually one share bundled with a fraction of a warrant | ❌ |
+| `right` | Rights, entitling the holder to a fraction of a share | ❌ |
+| `preferred` | Preferred stock and depositary shares representing it | ❌ |
+| `note` | Exchange-traded debt: notes due, debentures | ❌ |
+| `unknown` | Class could not be established from the security name | ❌ |
+
+Current composition of the shipped universes:
+
+```
+config/us_stocks.csv  (13,135)      config/asx_etf.csv  (478)
+  common_stock   5,750                etf   477
+  etf            5,670                unit    1
+  preferred        487
+  warrant          473
+  unit             295
+  note             164
+  unknown          156
+  right            140
+```
+
+`unknown` is never included implicitly: an instrument whose class could not be
+established is excluded unless `asset_types` names it, so a derivative can
+never enter a screen by defaulting into common stock. To screen them anyway,
+list the type explicitly:
+
+```yaml
+asset_types: [common_stock, unknown]   # accept unclassified instruments too
+```
+
+Warrants and units genuinely trade, so screening them is a legitimate choice —
+just an explicit one.
 
 Two commands, deliberately distinct:
 
@@ -171,18 +224,20 @@ AACIW,Armada Acquisition Corp. III Warrant,NASDAQ,warrant,,2026-08-22
 
 This matters for two reasons:
 
-- **The NASDAQ screener file is not only NASDAQ.** `A`, `AA` and `ABBV` are
-  NYSE-listed. Links are built from each ticker's own exchange; where the
-  exchange is unknown, no link is emitted rather than a wrong one.
-- **It is not only common stock.** The file contains warrants, units, rights,
-  preferred lines and notes. `asset_types` in the config selects what to
-  screen; derivative classes are excluded by default.
+- **A US universe is not one exchange.** `AAPL` is Nasdaq; `A`, `AA` and
+  `ABBV` are NYSE; `SPY` is NYSE Arca. Links are built from each ticker's own
+  venue, and where the venue is unknown no link is emitted rather than a wrong
+  one. This is why the universe is `US` rather than `NASDAQ`: a recent
+  one-year screen returned 604 Nasdaq names and 595 NYSE ones.
+- **It is not only common stock.** The directory lists warrants, units,
+  rights, preferred lines and notes alongside ordinary shares. See
+  [Instrument types](#instrument-types) below.
 
 Legacy `TICKER~Name` files still load — asset type is inferred from the
 security name and exchange is recorded as `UNKNOWN`. Upgrade one with:
 
 ```bash
-uv run src/universe.py refresh NASDAQ stocks
+uv run src/universe.py sync US stocks
 ```
 
 ## Configuration
@@ -191,9 +246,9 @@ One file per exchange/instrument pair in `config/`:
 
 ```yaml
 config:
-  ticker_file: config/nasdaq_stocks.csv   # relative to the repo
-  data_dir: nasdaq/stocks                 # relative to STOCKS_DATA_ROOT
-  db_path: nasdaq.db
+  ticker_file: config/us_stocks.csv       # relative to the repo
+  data_dir: us/stocks                     # relative to STOCKS_DATA_ROOT
+  db_path: us.db
 
   analysis:
     min_price: 10.0
@@ -247,4 +302,5 @@ Provider calls are stubbed throughout, so the suite never depends on Yahoo
 being reachable.
 
 ## Resources
-- [NASDAQ Screener](https://www.nasdaq.com/market-activity/stocks/screener)
+- [Nasdaq Trader symbol directory](https://www.nasdaqtrader.com/trader.aspx?id=symboldirdefs) — the authoritative source `universe.py sync` reads
+- [Nasdaq Screener](https://www.nasdaq.com/market-activity/stocks/screener)

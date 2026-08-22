@@ -1,17 +1,18 @@
 config:
   # Input ticker list, resolved against the project root.
-  ticker_file: config/nasdaq_stocks.csv
+  ticker_file: config/us_stocks.csv
 
   # Generated artefacts, resolved against STOCKS_DATA_ROOT if that env var is
   # set, otherwise against <project_root>/data.
-  data_dir: nasdaq/stocks
-  db_path: nasdaq.db
+  data_dir: us/stocks
+  db_path: us.db
 
   analysis:
-    # Prices are USD on NASDAQ.
+    # Prices are USD across the US venues.
     min_price: 10.0
-    # Median daily volume across NASDAQ is ~188k shares; this floor removes
-    # roughly the bottom third, where percentage moves are not realisable.
+    # Median daily volume across the US listed universe is ~188k shares; this
+    # floor removes roughly the bottom third, where percentage moves are not
+    # realisable.
     min_median_volume: 50000
     # Require 80% of the window's calendar span before reporting a ticker for
     # it, so recent listings do not appear in the longer-window tables.
@@ -24,8 +25,9 @@ config:
     min_observation_ratio: 0.5
     # Refuse to screen a price file whose newest row is older than this.
     max_data_age_days: 5
-    # Warrants, units and preferred lines share the NASDAQ screener file but
-    # are not ordinary equity exposure; exclude them from a "stocks" screen.
+    # The exchange symbol directory lists warrants, units, rights, preferred
+    # lines and notes alongside common stock. None of those are ordinary
+    # equity exposure, so a "stocks" screen takes common_stock only.
     asset_types: [common_stock]
     windows:
       - {months: 12, label: 1_year, threshold: 25.0}

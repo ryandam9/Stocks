@@ -17,8 +17,8 @@ set -euo pipefail
 
 usage() {
     echo "Usage: $(basename "$0") <EXCHANGE> <INSTRUMENT_TYPE> [--upload] [--allow-stale]" >&2
-    echo "  e.g. $(basename "$0") NASDAQ stocks" >&2
-    echo "       S3_BUCKET=s3://my-bucket $(basename "$0") NASDAQ stocks --upload" >&2
+    echo "  e.g. $(basename "$0") US stocks" >&2
+    echo "       S3_BUCKET=s3://my-bucket $(basename "$0") US stocks --upload" >&2
     exit 1
 }
 

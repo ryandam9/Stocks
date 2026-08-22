@@ -140,7 +140,7 @@ def test_shipped_universes_are_structured_and_classified():
     import config as cfg_mod
 
     for exchange, instrument, expected_type in [
-        ("NASDAQ", "stocks", COMMON_STOCK),
+        ("US", "stocks", COMMON_STOCK),
         ("ASX", "etf", ETF),
     ]:
         cfg = cfg_mod.load_config(exchange, instrument)

@@ -12,7 +12,7 @@ unknown exchange is preserved as unknown rather than being replaced by the
 config's exchange code, because that is what produced links labelling NYSE
 securities as NASDAQ.
 
-Run ``python src/universe.py refresh <EXCHANGE> <INSTRUMENT>`` to upgrade a
+Run ``python src/universe.py sync <EXCHANGE> <INSTRUMENT>`` to upgrade a
 legacy file in place using the data provider's own metadata.
 """
 

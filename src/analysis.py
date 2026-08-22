@@ -521,7 +521,7 @@ def analyze_stocks(
     "--exchange",
     required=True,
     type=click.Choice(list(EXCHANGE_SUFFIXES), case_sensitive=False),
-    help="Exchange code (e.g., NSE, ASX, NASDAQ)",
+    help="Exchange code (e.g., US, ASX, NSE)",
 )
 @click.option(
     "--instrument-type",

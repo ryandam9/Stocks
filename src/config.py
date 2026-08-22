@@ -21,8 +21,15 @@ import yaml
 EXCHANGE_SUFFIXES = {
     "NSE": "NS",  # National Stock Exchange (India)
     "BSE": "BO",  # Bombay Stock Exchange
+    # "US" is the whole US listed universe: Nasdaq, NYSE, NYSE American,
+    # NYSE Arca, Cboe BZX and IEX. The exchange symbol directory this project
+    # syncs from covers all of them, and links are built from each ticker's
+    # own venue, so a single US universe is more honest than pretending the
+    # list is Nasdaq-only. NYSE and NASDAQ remain available for venue-specific
+    # universes; no config is shipped for them.
+    "US": "",
     "NYSE": "",  # New York Stock Exchange
-    "NASDAQ": "",  # NASDAQ
+    "NASDAQ": "",  # Nasdaq
     "ASX": "AX",  # Australian Securities Exchange
 }
 
@@ -366,7 +373,7 @@ def _main() -> None:
     """Print one resolved config value.
 
     Lets the shell wrappers read config without reimplementing YAML parsing:
-        python src/config.py NASDAQ stocks data_dir
+        python src/config.py US stocks data_dir
     """
     import sys
 

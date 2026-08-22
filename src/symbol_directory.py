@@ -85,12 +85,12 @@ _NAME_CLASSES = [
 
 DIRECTORY_COLUMNS = ["ticker", "name", "exchange", "asset_type"]
 
-# Which directory venues make up each configured exchange universe. The
-# NASDAQ screener file this project started from is really a US-wide list, so
-# the NASDAQ universe deliberately spans the major US venues; links still use
-# each ticker's own exchange.
+# Which directory venues make up each configured exchange universe. Links are
+# always built from each ticker's own venue, so a multi-venue universe stays
+# correct per instrument.
 US_EXCHANGES = {
-    "NASDAQ": ["NASDAQ", "NYSE", "NYSEAMERICAN", "NYSEARCA", "CBOEBZX", "IEX"],
+    "US": ["NASDAQ", "NYSE", "NYSEAMERICAN", "NYSEARCA", "CBOEBZX", "IEX"],
+    "NASDAQ": ["NASDAQ"],
     "NYSE": ["NYSE", "NYSEAMERICAN", "NYSEARCA"],
 }
 

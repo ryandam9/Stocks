@@ -45,13 +45,13 @@ def _fetch_project(tmp_path, monkeypatch, tickers):
     (tmp_path / "config").mkdir(exist_ok=True)
     import yaml
 
-    (tmp_path / "config" / "nasdaq_stocks_config.yaml").write_text(
+    (tmp_path / "config" / "us_stocks_config.yaml").write_text(
         yaml.safe_dump(
             {
                 "config": {
                     "ticker_file": "config/universe.csv",
-                    "data_dir": "nasdaq/stocks",
-                    "db_path": "nasdaq.db",
+                    "data_dir": "us/stocks",
+                    "db_path": "us.db",
                 }
             }
         )
@@ -67,7 +67,7 @@ def test_partial_fetch_is_rejected(tmp_path, monkeypatch):
     _fetch_project(tmp_path, monkeypatch, tickers)
     _stub_download(monkeypatch, set(tickers[:70]))
 
-    fetcher = fetch_prices.YahooFinanceDataFetcher("NASDAQ", "stocks", period=30)
+    fetcher = fetch_prices.YahooFinanceDataFetcher("US", "stocks", period=30)
     fetcher.fetch_historical_data()
 
     assert fetcher.success_ratio == pytest.approx(0.70)
@@ -80,7 +80,7 @@ def test_near_complete_fetch_is_accepted(tmp_path, monkeypatch):
     _fetch_project(tmp_path, monkeypatch, tickers)
     _stub_download(monkeypatch, set(tickers[:99]))
 
-    fetcher = fetch_prices.YahooFinanceDataFetcher("NASDAQ", "stocks", period=30)
+    fetcher = fetch_prices.YahooFinanceDataFetcher("US", "stocks", period=30)
     fetcher.fetch_historical_data()
     fetcher.assert_fetch_is_complete(min_ratio=0.95)  # must not raise
 
@@ -90,7 +90,7 @@ def test_allow_partial_overrides_the_gate(tmp_path, monkeypatch):
     _fetch_project(tmp_path, monkeypatch, tickers)
     _stub_download(monkeypatch, set(tickers[:10]))
 
-    fetcher = fetch_prices.YahooFinanceDataFetcher("NASDAQ", "stocks", period=30)
+    fetcher = fetch_prices.YahooFinanceDataFetcher("US", "stocks", period=30)
     fetcher.fetch_historical_data()
     fetcher.assert_fetch_is_complete(min_ratio=0.95, allow_partial=True)
 
@@ -101,7 +101,7 @@ def test_failed_gate_leaves_the_previous_price_file_intact(tmp_path, monkeypatch
     _fetch_project(tmp_path, monkeypatch, tickers)
     _stub_download(monkeypatch, set(tickers[:20]))
 
-    fetcher = fetch_prices.YahooFinanceDataFetcher("NASDAQ", "stocks", period=30)
+    fetcher = fetch_prices.YahooFinanceDataFetcher("US", "stocks", period=30)
     os.makedirs(fetcher.config.data_dir, exist_ok=True)
     with open(fetcher.config.eod_csv, "w") as handle:
         handle.write("KNOWN GOOD\n")
@@ -283,7 +283,7 @@ def test_price_rows_and_manifest_carry_fetch_lineage(tmp_path, monkeypatch):
     _fetch_project(tmp_path, monkeypatch, tickers)
     _stub_download(monkeypatch, set(tickers))
 
-    fetcher = fetch_prices.YahooFinanceDataFetcher("NASDAQ", "stocks", period=30)
+    fetcher = fetch_prices.YahooFinanceDataFetcher("US", "stocks", period=30)
     data = fetcher.fetch_historical_data()
     assert (data["fetch_run_id"] == fetcher.run_id).all()
 
@@ -329,7 +329,7 @@ def test_mixed_price_basis_degrades_to_the_worst(build_frame, latest_date):
         min_observation_ratio=0.0,
     )
     result, funnel = compute_window_growth(
-        build_frame(series), 12, 25.0, settings, latest_date, "NASDAQ"
+        build_frame(series), 12, 25.0, settings, latest_date, "US"
     )
     assert result.empty
     assert dict(funnel)["Adjusted prices"] == 0
@@ -366,8 +366,8 @@ def test_sync_refuses_to_wipe_the_universe(tmp_path):
 
 
 def test_us_exchange_groups_are_defined():
-    assert "NASDAQ" in US_EXCHANGES["NASDAQ"]
-    assert "NYSE" in US_EXCHANGES["NASDAQ"]
+    assert "NASDAQ" in US_EXCHANGES["US"]
+    assert "NYSE" in US_EXCHANGES["US"]
 
 
 # ------------------------------------------------------------------ R2-008
@@ -396,7 +396,7 @@ def test_fetch_boundary_uses_exchange_local_date(tmp_path, monkeypatch):
         return pd.DataFrame()
 
     monkeypatch.setattr(fetch_prices.yf, "download", fake)
-    fetcher = fetch_prices.YahooFinanceDataFetcher("NASDAQ", "stocks", period=30)
+    fetcher = fetch_prices.YahooFinanceDataFetcher("US", "stocks", period=30)
     fetcher.fetch_historical_data()
 
     ny_today = pd.Timestamp.now(tz="America/New_York").normalize().tz_localize(None)
@@ -437,3 +437,56 @@ def test_shipped_etf_config_screens_a_universe():
         cfg.ticker_file, default_asset_type=default_asset_type_for(cfg.instrument_type)
     )
     assert len(filter_universe(universe, cfg.analysis.asset_types)) > 100
+
+
+# ------------------------------------------------------------------ universe naming
+
+
+def test_us_universe_is_the_shipped_one():
+    """The shipped US config must load and screen a real universe."""
+    cfg = load_config("US", "stocks")
+    assert cfg.ticker_file.endswith("us_stocks.csv")
+    assert cfg.prefix == "us_stocks"
+
+    universe = load_universe(
+        cfg.ticker_file, default_asset_type=default_asset_type_for(cfg.instrument_type)
+    )
+    screened = filter_universe(universe, cfg.analysis.asset_types)
+    assert len(screened) > 1000
+    # A US universe spans venues; that is the reason it is not named NASDAQ.
+    assert len(set(screened["exchange"])) > 1
+
+
+def test_every_classifier_output_is_a_valid_asset_type():
+    """Guards the documented type list against drift in the classifier."""
+    from config import VALID_ASSET_TYPES
+
+    names = [
+        "Apple Inc. - Common Stock",
+        "Armada Acquisition Corp. III - Warrant",
+        "Armada Acquisition Corp. III - Units",
+        "Apogee Acquisition Corp - Rights",
+        "Wheeler REIT 7.00% Series D Cumulative Preferred",
+        "Acme Corp - 5.5% Notes due 2030",
+        "Ares Capital Corporation - Closed End Fund",
+        "Mystery Holdings Ltd",
+    ]
+    produced = {classify_security_name(n) for n in names}
+    assert produced <= VALID_ASSET_TYPES, produced - VALID_ASSET_TYPES
+    # Every non-equity class the README documents must be reachable.
+    assert {"warrant", "unit", "right", "preferred", "note", "unknown"} <= produced
+
+
+def test_documented_asset_types_match_the_config_whitelist():
+    """The README table and VALID_ASSET_TYPES must not diverge."""
+    import re as _re
+
+    from config import VALID_ASSET_TYPES
+
+    readme = open(os.path.join(PROJECT_ROOT, "README.md")).read()
+    section = readme.split("### Instrument types", 1)[1].split("###", 1)[0]
+    documented = set(_re.findall(r"^\| `([a-z_]+)` \|", section, _re.M))
+    documented.discard("asset_type")  # the table's header cell
+    assert documented == VALID_ASSET_TYPES, (
+        f"README documents {sorted(documented)}, code allows {sorted(VALID_ASSET_TYPES)}"
+    )

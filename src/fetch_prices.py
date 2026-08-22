@@ -70,6 +70,7 @@ _SHARE_CLASS_SEPARATORS = re.compile(r"[./$]")
 # market is currently on. A host in Australia fetching NASDAQ is already a day
 # ahead, so a host-local boundary would request a session that has not started.
 EXCHANGE_TIMEZONES = {
+    "US": "America/New_York",
     "NASDAQ": "America/New_York",
     "NYSE": "America/New_York",
     "ASX": "Australia/Sydney",
@@ -190,7 +191,7 @@ class BaseDataCollector(ABC):
     ):
         """
         Args:
-            exchange: Exchange code (e.g., 'NSE', 'NASDAQ').
+            exchange: Exchange code (e.g., 'US', 'ASX').
             instrument_type: Instrument type (e.g., 'stocks', 'etf').
             period: Days of history to fetch.
             batch_size: Symbols per request.
@@ -568,7 +569,7 @@ class YahooFinanceDataFetcher(BaseDataCollector):
     "--exchange",
     required=True,
     type=click.Choice(list(EXCHANGE_SUFFIXES), case_sensitive=False),
-    help="Exchange code (e.g., NSE, ASX, NASDAQ)",
+    help="Exchange code (e.g., US, ASX, NSE)",
 )
 @click.option(
     "--instrument-type",
