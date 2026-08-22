@@ -31,7 +31,9 @@ def test_relative_paths_resolve_under_project_root(tmp_path, monkeypatch):
     write_config(tmp_path, monkeypatch, BASE)
     cfg = load_config("US", "stocks")
 
-    assert cfg.ticker_file == str(tmp_path / "config" / "us_stocks.csv")
+    assert cfg.bundled_ticker_file == str(tmp_path / "config" / "us_stocks.csv")
+    # The live universe sits on the data volume, not in the repo.
+    assert cfg.ticker_file == str(tmp_path / "data" / "universe" / "us_stocks.csv")
     assert cfg.data_dir == str(tmp_path / "data" / "us" / "stocks")
     assert cfg.db_path == str(tmp_path / "data" / "us.db")
 
@@ -45,8 +47,9 @@ def test_data_root_env_relocates_outputs_but_not_inputs(tmp_path, monkeypatch):
 
     assert cfg.data_dir == str(elsewhere / "us" / "stocks")
     assert cfg.db_path == str(elsewhere / "us.db")
-    # Ticker lists are repo inputs and must not follow the data root.
-    assert cfg.ticker_file == str(tmp_path / "config" / "us_stocks.csv")
+    # The committed seed stays in the repo; the live copy follows the data root.
+    assert cfg.bundled_ticker_file == str(tmp_path / "config" / "us_stocks.csv")
+    assert cfg.ticker_file == str(elsewhere / "universe" / "us_stocks.csv")
 
 
 def test_absolute_paths_are_left_alone(tmp_path, monkeypatch):

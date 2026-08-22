@@ -1,0 +1,40 @@
+# Local runs. Each service is one universe; both share the data volume, which
+# is what a Fargate task would back with EFS or S3 instead.
+#
+#   docker compose run --rm us all      # sync + fetch + analyse + publish
+#   docker compose run --rm asx fetch
+#   docker compose run --rm us analyze --allow-stale
+#   docker compose run --rm sqlite       # open a shell on the published data
+
+services:
+  us:
+    build: .
+    image: stocks:dev
+    volumes:
+      - stocks-data:/data
+    environment:
+      # STOCKS_DATA_ROOT is baked into the image as /data; override only to
+      # relocate within the container.
+      TZ: UTC
+    command: ["all", "--exchange", "US", "--instrument-type", "stocks", "--period", "365"]
+
+  asx:
+    build: .
+    image: stocks:dev
+    volumes:
+      - stocks-data:/data
+    environment:
+      TZ: UTC
+    command: ["all", "--exchange", "ASX", "--instrument-type", "etf", "--period", "365"]
+
+  # Inspect published results without installing sqlite on the host.
+  sqlite:
+    image: keinos/sqlite3:latest
+    volumes:
+      - stocks-data:/data
+    working_dir: /data
+    entrypoint: ["sh"]
+    profiles: ["tools"]
+
+volumes:
+  stocks-data:

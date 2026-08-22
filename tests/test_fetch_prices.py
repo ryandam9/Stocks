@@ -18,6 +18,8 @@ class DummyFetcher(YahooFinanceDataFetcher):
                 "ticker_file": str(ticker_file),
                 "analysis": analysis,
                 "instrument_type": instrument_type,
+                # The real config seeds the universe; the stub is already there.
+                "ensure_universe": lambda _self=None: str(ticker_file),
             },
         )()
 

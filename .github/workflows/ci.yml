@@ -38,6 +38,26 @@ jobs:
         # depends on Yahoo being reachable.
         run: uv run pytest -q
 
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: stocks:ci
+      - name: Smoke test
+        # No network: proves the image is importable and the CLI is wired,
+        # without depending on the price provider being reachable.
+        run: |
+          docker run --rm stocks:ci --help
+          docker run --rm --network none --entrypoint python stocks:ci -c \
+            "import sys; sys.path.insert(0,'/app/src'); import run, pipeline, analysis; \
+             from zoneinfo import ZoneInfo; ZoneInfo('America/New_York'); print('ok')"
+
   shellcheck:
     runs-on: ubuntu-latest
     steps:

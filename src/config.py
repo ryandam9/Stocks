@@ -169,10 +169,51 @@ class StockConfig:
 
     exchange: str
     instrument_type: str
-    ticker_file: str
+    #: Read-only copy committed to the repository, used to seed a fresh
+    #: install. In a container this lives in the image layer.
+    bundled_ticker_file: str
     data_dir: str
     db_path: str
     analysis: AnalysisSettings
+
+    @property
+    def ticker_file(self) -> str:
+        """The live universe file, on the data volume.
+
+        ``universe.py sync`` and ``enrich`` rewrite this file, so it cannot
+        live in the repository: that directory is read-only in a container and
+        the edit would be lost when the task exits. It is seeded from
+        :attr:`bundled_ticker_file` by :meth:`ensure_universe`.
+        """
+        return os.path.join(self.universe_dir, os.path.basename(self.bundled_ticker_file))
+
+    @property
+    def universe_dir(self) -> str:
+        """Universe files sit at the data root, shared across instrument types."""
+        return os.path.join(os.path.dirname(self.db_path), "universe")
+
+    def ensure_universe(self) -> str:
+        """Copy the bundled universe onto the data volume if not already there.
+
+        Returns:
+            Path to the live universe file.
+
+        Raises:
+            FileNotFoundError: neither a live nor a bundled universe exists.
+        """
+        import shutil
+
+        live = self.ticker_file
+        if os.path.exists(live):
+            return live
+        if not os.path.exists(self.bundled_ticker_file):
+            raise FileNotFoundError(
+                f"No universe file. Expected one at {live} or a bundled copy at "
+                f"{self.bundled_ticker_file}."
+            )
+        os.makedirs(os.path.dirname(live), exist_ok=True)
+        shutil.copy2(self.bundled_ticker_file, live)
+        return live
 
     @property
     def prefix(self) -> str:
@@ -452,9 +493,9 @@ def load_config(exchange: str, instrument_type: str) -> StockConfig:
     return StockConfig(
         exchange=exchange.upper(),
         instrument_type=instrument_type.lower(),
-        # Ticker lists are inputs tracked in the repo, so they anchor to the
-        # project root even when data has been relocated.
-        ticker_file=_resolve(ticker_file, PROJECT_ROOT),
+        # The committed copy is a seed only; the live universe is derived from
+        # it on the data volume (see StockConfig.ticker_file).
+        bundled_ticker_file=_resolve(ticker_file, PROJECT_ROOT),
         data_dir=_resolve(section.get("data_dir", "."), data_base),
         db_path=_resolve(section.get("db_path", "stocks.db"), data_base),
         analysis=analysis,
@@ -490,6 +531,10 @@ def _main() -> None:
 
     if key == "growth_schema_sql":
         print(growth_schema_sql())
+        return
+
+    if key == "ensure_universe":
+        print(cfg.ensure_universe())
         return
 
     if key == "consistent_growth_labels":

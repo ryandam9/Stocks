@@ -328,6 +328,7 @@ class BaseDataCollector(ABC):
 
     def _read_ticker_file(self) -> list[tuple[str, str]]:
         """Load the universe, restricted to the configured asset types."""
+        self.config.ensure_universe()
         universe = load_universe(
             self.config.ticker_file,
             default_asset_type=default_asset_type_for(self.config.instrument_type),

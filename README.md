@@ -203,6 +203,57 @@ Both universes, refreshed daily, with logs kept:
 Both scripts exit non-zero on failure, so cron will report a bad run rather
 than silently publishing one. Fetch logs rotate under `logs/`.
 
+## Docker
+
+The image runs any pipeline stage; all state lives on a mounted volume, so the
+container itself is disposable.
+
+```bash
+docker build -t stocks:dev .
+
+# Whole pipeline for a universe (sync -> fetch -> analyse -> publish)
+docker run --rm -v stocks-data:/data stocks:dev all --exchange US  --instrument-type stocks
+docker run --rm -v stocks-data:/data stocks:dev all --exchange ASX --instrument-type etf
+
+# Individual stages
+docker run --rm -v stocks-data:/data stocks:dev fetch   --exchange US --instrument-type stocks
+docker run --rm -v stocks-data:/data stocks:dev analyze --exchange US --instrument-type stocks --allow-stale
+```
+
+Or with compose:
+
+```bash
+docker compose run --rm us all
+docker compose run --rm asx all
+docker compose --profile tools run --rm sqlite   # shell to inspect /data
+```
+
+**Universe seeding.** The committed universes ship inside the image and are
+copied to `/data/universe/` on first run. `sync` and `enrich` then rewrite the
+copy on the volume, never the image layer, so membership survives across
+containers and the repository stays read-only.
+
+**Exit codes** are stable so a scheduler can branch without parsing logs:
+
+| Code | Meaning |
+|---|---|
+| 0 | Success |
+| 1 | Error |
+| 2 | Price data too stale to screen |
+| 3 | Fetch too incomplete to publish |
+
+**Image notes.** `python:3.12-slim`, multi-stage with `uv` installing from
+`requirements.lock`, runs as uid 10001, ~340 MB. `tzdata` is installed
+deliberately: the fetch boundary resolves the exchange's local date through
+`zoneinfo`, and without it the boundary silently falls back to UTC — a full
+day out for ASX. Outbound network is needed to
+`query1/query2.finance.yahoo.com` and `www.nasdaqtrader.com`.
+
+The container never invokes the shell scripts. `src/run.py` drives everything
+and `src/pipeline.py` builds the database with the `sqlite3` standard library,
+so the image needs no `sqlite3` CLI, no `sqlite-utils` and no Bash. The shell
+scripts remain for host use and produce byte-identical output.
+
 ## Common recipes
 
 **Screen US common stock only** — this is the shipped default; no change needed:

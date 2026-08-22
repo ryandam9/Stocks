@@ -447,6 +447,7 @@ def analyze_stocks(
         },
     )
 
+    cfg.ensure_universe()
     df = load_price_data(cfg.eod_csv)
     latest_date = df["stock_price_date"].max()
 

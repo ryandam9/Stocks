@@ -56,6 +56,7 @@ def build_project(tmp_path, monkeypatch, windows=None, **analysis_overrides):
 
 
 def write_universe(cfg, rows):
+    os.makedirs(os.path.dirname(cfg.ticker_file), exist_ok=True)
     with open(cfg.ticker_file, "w") as handle:
         for ticker, name in rows:
             handle.write(f"{ticker}~{name}\n")
@@ -256,6 +257,7 @@ def test_missing_price_basis_column_becomes_unknown(tmp_path):
 def test_links_use_each_ticker_s_real_exchange(tmp_path, monkeypatch):
     """STK-005: a NYSE security must not be linked as NASDAQ."""
     cfg = build_project(tmp_path, monkeypatch)
+    os.makedirs(os.path.dirname(cfg.ticker_file), exist_ok=True)
     with open(cfg.ticker_file, "w") as handle:
         handle.write("ticker,name,exchange,asset_type,currency,source_date\n")
         handle.write("AA,Alcoa Corporation,NYSE,common_stock,USD,2026-08-22\n")

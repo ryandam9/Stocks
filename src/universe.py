@@ -467,6 +467,9 @@ def _main() -> None:
 
     command, exchange, instrument_type = args
     cfg = load_config(exchange, instrument_type)
+    # Seed the live universe from the bundled copy on first use, so a fresh
+    # volume (or a fresh container) starts from the committed snapshot.
+    cfg.ensure_universe()
     default_type = default_asset_type_for(cfg.instrument_type)
 
     if command == "sync":

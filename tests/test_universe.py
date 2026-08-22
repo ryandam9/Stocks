@@ -144,7 +144,7 @@ def test_shipped_universes_are_structured_and_classified():
         ("ASX", "etf", ETF),
     ]:
         cfg = cfg_mod.load_config(exchange, instrument)
-        df = load_universe(cfg.ticker_file)
+        df = load_universe(cfg.bundled_ticker_file)
         assert len(df) > 100
         screened = filter_universe(df, [expected_type])
         assert len(screened) > 100

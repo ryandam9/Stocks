@@ -441,7 +441,8 @@ def test_shipped_etf_config_screens_a_universe():
     """End-to-end guard: the ASX config must not screen to zero instruments."""
     cfg = load_config("ASX", "etf")
     universe = load_universe(
-        cfg.ticker_file, default_asset_type=default_asset_type_for(cfg.instrument_type)
+        cfg.bundled_ticker_file,
+        default_asset_type=default_asset_type_for(cfg.instrument_type),
     )
     assert len(filter_universe(universe, cfg.analysis.asset_types)) > 100
 
@@ -452,11 +453,12 @@ def test_shipped_etf_config_screens_a_universe():
 def test_us_universe_is_the_shipped_one():
     """The shipped US config must load and screen a real universe."""
     cfg = load_config("US", "stocks")
-    assert cfg.ticker_file.endswith("us_stocks.csv")
+    assert cfg.bundled_ticker_file.endswith("us_stocks.csv")
     assert cfg.prefix == "us_stocks"
 
     universe = load_universe(
-        cfg.ticker_file, default_asset_type=default_asset_type_for(cfg.instrument_type)
+        cfg.bundled_ticker_file,
+        default_asset_type=default_asset_type_for(cfg.instrument_type),
     )
     screened = filter_universe(universe, cfg.analysis.asset_types)
     assert len(screened) > 1000
@@ -770,8 +772,13 @@ def test_day_window_screens_a_short_period(build_frame):
 
     loose = {"min_price": 0.0, "min_median_volume": 0.0, "min_observation_ratio": 0.0}
 
-    week = {"days": 7, "label": "7_days", "threshold": 10.0,
-            "endpoint_window": 2, "min_coverage": 0.5}
+    week = {
+        "days": 7,
+        "label": "7_days",
+        "threshold": 10.0,
+        "endpoint_window": 2,
+        "min_coverage": 0.5,
+    }
     weekly, _ = compute_window_growth(
         df, week, 10.0, settings_for_window(AnalysisSettings(**loose), week), latest, "US"
     )
@@ -780,8 +787,12 @@ def test_day_window_screens_a_short_period(build_frame):
 
     # Over a month the same ticker is down, so it must not qualify.
     monthly, _ = compute_window_growth(
-        df, {"months": 1, "label": "1_month", "threshold": 10.0}, 10.0,
-        AnalysisSettings(endpoint_window=1, **loose), latest, "US",
+        df,
+        {"months": 1, "label": "1_month", "threshold": 10.0},
+        10.0,
+        AnalysisSettings(endpoint_window=1, **loose),
+        latest,
+        "US",
     )
     assert monthly.empty, "a falling month must not be reported as growth"
 
