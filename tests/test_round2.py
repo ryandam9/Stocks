@@ -7,7 +7,7 @@ import re
 import pandas as pd
 import pytest
 from conftest import make_series
-from test_integration import build_project, write_prices, write_universe
+from test_integration import build_project, read_csv_rows, write_prices, write_universe
 
 import analysis
 import config as cfg_mod
@@ -698,3 +698,49 @@ def test_readme_documents_only_real_cli_flags():
     documented = set(_re.findall(r"`(--[a-z][a-z-]+)[ `]", readme))
     unknown = documented - real
     assert not unknown, f"README documents non-existent flag(s): {sorted(unknown)}"
+
+
+# ------------------------------------------------------------------ price history
+
+
+def test_price_history_is_off_by_default(tmp_path, monkeypatch):
+    """It was ~99% of a published database and only useful for charting."""
+    cfg = build_project(tmp_path, monkeypatch)
+    assert cfg.analysis.include_price_history is False
+
+    write_universe(cfg, [("AAA", "Alpha Inc")])
+    write_prices(cfg, make_series("AAA", "Alpha Inc", "2026-05-01", "2026-06-02", 100, 150))
+    analysis.analyze_stocks(cfg, allow_stale=True)
+
+    assert not os.path.exists(cfg.combined_growth_csv)
+    # The screen result itself is unaffected.
+    assert [r["ticker"] for r in read_csv_rows(cfg.growth_csv("1_month"))] == ["AAA"]
+
+
+def test_price_history_can_be_enabled(tmp_path, monkeypatch):
+    cfg = build_project(tmp_path, monkeypatch, include_price_history=True)
+    write_universe(cfg, [("AAA", "Alpha Inc")])
+    write_prices(cfg, make_series("AAA", "Alpha Inc", "2026-05-01", "2026-06-02", 100, 150))
+    analysis.analyze_stocks(cfg, allow_stale=True)
+
+    rows = read_csv_rows(cfg.combined_growth_csv)
+    assert rows and rows[0]["ticker"] == "AAA"
+
+
+def test_disabling_history_removes_a_previous_run_s_file(tmp_path, monkeypatch):
+    """Turning it off must not leave stale prices to be republished."""
+    cfg = build_project(tmp_path, monkeypatch, include_price_history=True)
+    write_universe(cfg, [("AAA", "Alpha Inc")])
+    write_prices(cfg, make_series("AAA", "Alpha Inc", "2026-05-01", "2026-06-02", 100, 150))
+    analysis.analyze_stocks(cfg, allow_stale=True)
+    assert os.path.exists(cfg.combined_growth_csv)
+
+    # Same project, history now disabled.
+    cfg_off = build_project(tmp_path, monkeypatch, include_price_history=False)
+    analysis.analyze_stocks(cfg_off, allow_stale=True)
+    assert not os.path.exists(cfg_off.combined_growth_csv)
+
+
+def test_include_price_history_must_be_boolean(tmp_path, monkeypatch):
+    with pytest.raises(ValueError, match="include_price_history must be true or false"):
+        build_project(tmp_path, monkeypatch, include_price_history="yes")

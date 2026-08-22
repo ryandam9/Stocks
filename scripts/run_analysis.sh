@@ -61,6 +61,7 @@ EOD_CSV=$(cfg eod_csv)
 COMBINED_CSV=$(cfg combined_growth_csv)
 mapfile -t LABELS < <(cfg growth_labels)
 GROWTH_SCHEMA=$(cfg growth_schema_sql)
+INCLUDE_HISTORY=$(cfg include_price_history)
 
 if [[ ! -f "$EOD_CSV" ]]; then
     echo "Error: price data not found: $EOD_CSV" >&2
@@ -135,7 +136,14 @@ for label in "${LABELS[@]}"; do
     load_table "${EOD_CSV%.csv}_growth_${label}.csv" "${PREFIX}_growth_${label}" \
         "$GROWTH_SCHEMA" || ALL_LOADED=false
 done
-load_table "$COMBINED_CSV" "${PREFIX}_growth" || ALL_LOADED=false
+if [[ "$INCLUDE_HISTORY" == true ]]; then
+    load_table "$COMBINED_CSV" "${PREFIX}_growth" || ALL_LOADED=false
+else
+    # Drop any history table left by an earlier run that had it enabled, so a
+    # stale copy is never served alongside fresh screen results.
+    sqlite3 "$TMP_DB" "DROP TABLE IF EXISTS \"${PREFIX}_growth\";"
+    log "  Skipping price history (include_price_history: false)"
+fi
 
 if [[ "$ALL_LOADED" != true ]]; then
     echo "Error: expected outputs were missing; refusing to publish a partial DB" >&2

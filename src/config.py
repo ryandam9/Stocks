@@ -132,6 +132,10 @@ class AnalysisSettings:
     # Instrument categories to screen. Warrants, units and preferred lines are
     # excluded by default; they are not ordinary equity exposure.
     asset_types: list[str] = field(default_factory=lambda: ["common_stock", "etf"])
+    # Whether to publish daily price history for matched tickers. Off by
+    # default: it is ~99% of a published database and is only useful for
+    # charting. The screen results themselves are unaffected.
+    include_price_history: bool = False
     windows: list[dict] = field(default_factory=lambda: list(DEFAULT_WINDOWS))
 
 
@@ -339,6 +343,14 @@ def load_config(exchange: str, instrument_type: str) -> StockConfig:
     _require_non_negative(analysis_raw, "min_price", path)
     _require_non_negative(analysis_raw, "min_median_volume", path)
 
+    if "include_price_history" in analysis_raw and not isinstance(
+        analysis_raw["include_price_history"], bool
+    ):
+        raise ValueError(
+            f"{path}: include_price_history must be true or false, got "
+            f"{analysis_raw['include_price_history']!r}"
+        )
+
     if "asset_types" in analysis_raw:
         raw_types = analysis_raw["asset_types"]
         # A bare string is iterable, so list() would silently turn
@@ -385,6 +397,7 @@ def load_config(exchange: str, instrument_type: str) -> StockConfig:
         min_observation_ratio=float(analysis_raw.get("min_observation_ratio", 0.5)),
         max_data_age_days=int(analysis_raw.get("max_data_age_days", 5)),
         asset_types=list(analysis_raw.get("asset_types", ["common_stock", "etf"])),
+        include_price_history=bool(analysis_raw.get("include_price_history", False)),
         windows=list(windows),
     )
 
@@ -413,7 +426,7 @@ def _main() -> None:
             "Usage: config.py <EXCHANGE> <INSTRUMENT_TYPE> <KEY>\n"
             "  KEY: ticker_file | data_dir | db_path | eod_csv |\n"
             "       combined_growth_csv | growth_labels | prefix |\n"
-            "       growth_schema_sql",
+            "       growth_schema_sql | include_price_history",
             file=sys.stderr,
         )
         sys.exit(2)
@@ -428,6 +441,11 @@ def _main() -> None:
 
     if key == "growth_schema_sql":
         print(growth_schema_sql())
+        return
+
+    if key == "include_price_history":
+        # Printed as a shell-friendly true/false.
+        print("true" if cfg.analysis.include_price_history else "false")
         return
 
     if not hasattr(cfg, key) or key.startswith("_"):

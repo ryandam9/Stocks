@@ -99,7 +99,8 @@ def test_second_run_with_no_results_clears_the_first(tmp_path, monkeypatch):
 
 
 def test_combined_growth_is_also_cleared(tmp_path, monkeypatch):
-    cfg = build_project(tmp_path, monkeypatch)
+    """Same STK-001 guarantee for the optional price-history output."""
+    cfg = build_project(tmp_path, monkeypatch, include_price_history=True)
     write_universe(cfg, [("BOOM", "Boom Inc")])
 
     write_prices(cfg, make_series("BOOM", "Boom Inc", "2026-05-01", "2026-06-02", 100, 150))

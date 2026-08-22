@@ -29,6 +29,10 @@ config:
     # lines and notes alongside common stock. None of those are ordinary
     # equity exposure, so a "stocks" screen takes common_stock only.
     asset_types: [common_stock]
+    # Publish daily price history for matched tickers as well as the screen
+    # results. Off by default: it is ~99% of the database size and is only
+    # useful for charting. Screen results are unaffected either way.
+    include_price_history: false
     windows:
       - {months: 12, label: 1_year, threshold: 25.0}
       - {months: 6, label: 6_months, threshold: 25.0}

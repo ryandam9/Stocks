@@ -29,6 +29,10 @@ config:
     max_data_age_days: 5
     # This universe is exchange-traded funds only.
     asset_types: [etf]
+    # Publish daily price history for matched tickers as well as the screen
+    # results. Off by default: it is ~99% of the database size and is only
+    # useful for charting. Screen results are unaffected either way.
+    include_price_history: false
     windows:
       - {months: 12, label: 1_year, threshold: 25.0}
       - {months: 6, label: 6_months, threshold: 25.0}

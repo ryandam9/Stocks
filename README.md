@@ -536,30 +536,37 @@ that qualified in **every** configured window.
 
 ### Database size
 
-Almost all of a published database is `<prefix>_growth`, the daily price
-history for matched tickers. The screen results themselves are tiny:
+A published database holds the screen results only, so it is small — under
+1 MB for the whole US universe:
 
 ```
-us_stocks_growth            438,643 rows    ~32 MB   daily OHLCV, for charting
-us_stocks_growth_1_year       1,171 rows   ~0.3 MB   the actual screen
-us_stocks_growth_6_months       749 rows   ~0.2 MB
-us_stocks_growth_3_months       521 rows   ~0.1 MB
-us_stocks_growth_1_month        818 rows   ~0.2 MB
-consistent_growth_stocks        152 rows   <0.1 MB
+us_stocks_growth_1_year       1,171 rows
+us_stocks_growth_6_months       749 rows
+us_stocks_growth_3_months       521 rows
+us_stocks_growth_1_month        818 rows
+consistent_growth_stocks        152 rows
+                              --------
+us.db                          0.83 MB
 ```
 
-The history table stores only per-row facts. Values that are constant for a
-run (`fetch_time`, `price_basis`, `fetch_run_id`, `run_id`) live in the run
-manifest, and `name` is joinable from any per-window table, so none of them is
-repeated on all 438k rows. The database is also `VACUUM`ed before publication,
-since bulk inserts otherwise leave roughly half the file as free pages.
+Daily price history for matched tickers is **not published by default**. It is
+useful only for charting and was ~99% of the file: 438,643 rows against ~3,000
+rows of actual results. Enable it per config if you want it:
 
-If you do not need price history for charting, deleting that one table leaves
-a database under 1 MB with every screen result intact:
-
-```bash
-sqlite3 /path/to/us.db "DROP TABLE us_stocks_growth; VACUUM;"
+```yaml
+analysis:
+  include_price_history: true    # adds <prefix>_growth, ~33 MB for US stocks
 ```
+
+Turning it back off removes the table and its CSV on the next run, so a stale
+copy is never served alongside fresh results.
+
+Two further size measures apply when it *is* enabled: the history table stores
+only per-row facts (values constant for a run — `fetch_time`, `price_basis`,
+`fetch_run_id`, `run_id` — live in the manifest, and `name` is joinable from
+any per-window table, rather than being repeated on every daily row), and the
+database is `VACUUM`ed before publication, since bulk inserts otherwise leave
+roughly half the file as free pages.
 
 ## Tests
 

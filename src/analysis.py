@@ -523,8 +523,18 @@ def analyze_stocks(
         outputs[label] = {"path": output_path, "rows": len(result)}
         print(f"Wrote {len(result)} rows to: {output_path}")
 
-    combined_path = build_combined_growth(df, results, cfg.eod_csv, abbreviations, run_id)
-    outputs["combined"] = {"path": combined_path}
+    if settings.include_price_history:
+        combined_path = build_combined_growth(df, results, cfg.eod_csv, abbreviations, run_id)
+        outputs["combined"] = {"path": combined_path}
+    else:
+        # Remove any history published by an earlier run that had it enabled.
+        # Leaving the file behind would let the loader republish stale prices
+        # as though they belonged to this run.
+        stale = _growth_output_path(cfg.eod_csv, "_growth")
+        if os.path.exists(stale):
+            os.remove(stale)
+            print(f"\nRemoved price history from a previous run: {stale}")
+        outputs["combined"] = None
 
     manifest.counts = counts
     manifest.outputs = outputs
