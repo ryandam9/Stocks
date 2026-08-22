@@ -1,22 +1,32 @@
 import pandas as pd
 import pytest
+from conftest import make_series
 
 from analysis import (
     MAX_STALENESS_DAYS,
-    build_combined_growth,
     compute_window_growth,
     load_price_data,
 )
 from config import AnalysisSettings
-from conftest import make_series
 
 LOOSE = AnalysisSettings(
-    min_price=0.0, min_median_volume=0.0, min_coverage=0.8, endpoint_window=1
+    min_price=0.0,
+    min_median_volume=0.0,
+    min_coverage=0.8,
+    endpoint_window=1,
+    min_observation_ratio=0.0,
 )
 
 
 def growth(df, latest_date, months=12, threshold=25.0, settings=LOOSE):
-    return compute_window_growth(df, months, threshold, settings, latest_date, "NASDAQ")
+    """Return just the result table; the funnel is asserted separately."""
+    result, _funnel = compute_window_growth(df, months, threshold, settings, latest_date, "NASDAQ")
+    return result.reset_index(drop=True)
+
+
+def funnel_of(df, latest_date, months=12, threshold=25.0, settings=LOOSE):
+    _result, funnel = compute_window_growth(df, months, threshold, settings, latest_date, "NASDAQ")
+    return dict(funnel)
 
 
 def test_basic_percentage_change(build_frame, latest_date):
@@ -58,7 +68,11 @@ def test_delisted_ticker_excluded(build_frame, latest_date):
 def test_illiquid_ticker_excluded(build_frame, latest_date):
     thin = make_series("THIN", "Illiquid", "2025-06-02", "2026-06-02", 100, 400, volume=50)
     settings = AnalysisSettings(
-        min_price=0.0, min_median_volume=50_000, min_coverage=0.8, endpoint_window=1
+        min_price=0.0,
+        min_median_volume=50_000,
+        min_coverage=0.8,
+        endpoint_window=1,
+        min_observation_ratio=0.0,
     )
     assert growth(build_frame(thin), latest_date, settings=settings).empty
 
@@ -66,7 +80,11 @@ def test_illiquid_ticker_excluded(build_frame, latest_date):
 def test_price_floor_applies_to_latest_price(build_frame, latest_date):
     penny = make_series("PENNY", "Penny", "2025-06-02", "2026-06-02", 0.10, 5.0)
     settings = AnalysisSettings(
-        min_price=10.0, min_median_volume=0.0, min_coverage=0.8, endpoint_window=1
+        min_price=10.0,
+        min_median_volume=0.0,
+        min_coverage=0.8,
+        endpoint_window=1,
+        min_observation_ratio=0.0,
     )
     assert growth(build_frame(penny), latest_date, settings=settings).empty
 
@@ -84,10 +102,18 @@ def test_endpoint_median_absorbs_a_single_bad_print(build_frame, latest_date):
     df = build_frame(series)
 
     single = AnalysisSettings(
-        min_price=0.0, min_median_volume=0.0, min_coverage=0.8, endpoint_window=1
+        min_price=0.0,
+        min_median_volume=0.0,
+        min_coverage=0.8,
+        endpoint_window=1,
+        min_observation_ratio=0.0,
     )
     smoothed = AnalysisSettings(
-        min_price=0.0, min_median_volume=0.0, min_coverage=0.8, endpoint_window=3
+        min_price=0.0,
+        min_median_volume=0.0,
+        min_coverage=0.8,
+        endpoint_window=3,
+        min_observation_ratio=0.0,
     )
     assert growth(df, latest_date, settings=single).loc[0, "pct_change"] > 1500
     assert growth(df, latest_date, settings=smoothed).loc[0, "pct_change"] < 150
@@ -96,7 +122,6 @@ def test_endpoint_median_absorbs_a_single_bad_print(build_frame, latest_date):
 def test_duplicate_rows_do_not_affect_endpoints(tmp_path, latest_date):
     series = make_series("DUP", "Dup", "2025-06-02", "2026-06-02", 100, 200)
     doubled = pd.concat([series, series], ignore_index=True)
-    doubled["adj_close"] = doubled["price"]
     csv = tmp_path / "eod.csv"
     doubled.drop(columns=["price"]).to_csv(csv, index=False)
 
@@ -106,8 +131,7 @@ def test_duplicate_rows_do_not_affect_endpoints(tmp_path, latest_date):
 
 def test_zero_and_negative_prices_dropped(tmp_path):
     series = make_series("ZERO", "Zero", "2025-06-02", "2025-07-02", 100, 200)
-    series.loc[series.index[0], ["price", "close"]] = 0.0
-    series["adj_close"] = series["price"]
+    series.loc[series.index[0], ["price", "close", "adj_close"]] = 0.0
     csv = tmp_path / "eod.csv"
     series.drop(columns=["price"]).to_csv(csv, index=False)
 

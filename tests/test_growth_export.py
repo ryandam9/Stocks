@@ -9,9 +9,9 @@ all but its first period. These tests pin the round-trip.
 import csv
 
 import pandas as pd
+from conftest import make_series
 
 from analysis import build_combined_growth
-from conftest import make_series
 
 ALL_WINDOWS = {"1_year": "1Y", "6_months": "6M", "3_months": "3M", "1_month": "1M"}
 
@@ -78,11 +78,17 @@ def test_periods_follow_configured_window_order(tmp_path):
     assert row["growth_periods"] == "1Y,3M,1M"
 
 
-def test_no_growth_writes_nothing(tmp_path):
+def test_no_growth_still_writes_an_empty_file(tmp_path):
+    """STK-001: skipping the write would leave a previous run's file in place."""
     df = make_series("AA", "Alpha", "2025-06-02", "2025-06-10", 10, 20)
-    assert (
-        build_combined_growth(
-            df, {"1_year": pd.DataFrame()}, str(tmp_path / "eod.csv"), ALL_WINDOWS
-        )
-        is None
+    path = build_combined_growth(
+        df, {"1_year": pd.DataFrame()}, str(tmp_path / "eod.csv"), ALL_WINDOWS
     )
+    assert path is not None
+
+    with open(path, newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert rows == []
+    # The header must survive so the file is still schema-valid.
+    with open(path) as handle:
+        assert "ticker" in handle.readline()

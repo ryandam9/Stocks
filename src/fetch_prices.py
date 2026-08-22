@@ -13,17 +13,19 @@ import os
 import sys
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Iterable, Sequence
 from datetime import datetime, timedelta
-from typing import Iterable, List, Optional, Sequence, Tuple
 
 import click
 import pandas as pd
 import yfinance as yf
-from yfinance.exceptions import YFRateLimitError
+from yfinance.exceptions import YFException, YFRateLimitError
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config import EXCHANGE_SUFFIXES, INSTRUMENTS, StockConfig, load_config
+from runmeta import atomic_write_csv, new_run_id
+from universe import filter_universe, load_universe
 
 pd.set_option("display.max_columns", None)
 pd.set_option("display.width", 1000)
@@ -43,14 +45,24 @@ TRANSIENT_ERRORS = (
     OSError,  # covers socket errors and most requests/urllib3 transport failures
 )
 
+# Provider-side faults a batch can legitimately recover from. Anything else
+# (a pandas/yfinance response-shape change, a bug in normalisation) is a defect
+# and must fail the run rather than be recorded as "these tickers failed".
+RECOVERABLE_ERRORS = TRANSIENT_ERRORS + (YFException, ValueError, KeyError)
+
 PRICE_COLUMNS = ["Open", "High", "Low", "Close", "Adj Close"]
+
+# Recorded per row so downstream code can tell verified adjusted prices from a
+# raw-close fallback. Screening treats the two differently.
+BASIS_ADJUSTED = "adjusted"
+BASIS_RAW_FALLBACK = "raw_fallback"
 
 logger = logging.getLogger(__name__)
 
 
 def setup_logging(
     log_level: str = "INFO",
-    log_file: Optional[str] = None,
+    log_file: str | None = None,
     log_format: str = "%(asctime)s - %(name)s - %(filename)s:%(lineno)d - %(levelname)s - %(message)s",
 ) -> None:
     """Configure root logging to the console and, optionally, a rotating file."""
@@ -91,7 +103,7 @@ def retry(
     max_attempts: int = 3,
     delay: float = 1.0,
     backoff: float = 2.0,
-    exceptions: Tuple[type, ...] = TRANSIENT_ERRORS,
+    exceptions: tuple[type, ...] = TRANSIENT_ERRORS,
 ):
     """Retry a function on transient errors with exponential backoff.
 
@@ -111,9 +123,7 @@ def retry(
                     return func(*args, **kwargs)
                 except exceptions as exc:
                     if attempt == max_attempts:
-                        logger.error(
-                            f"{func.__name__} failed after {max_attempts} attempts: {exc}"
-                        )
+                        logger.error(f"{func.__name__} failed after {max_attempts} attempts: {exc}")
                         raise
                     logger.warning(
                         f"{func.__name__} attempt {attempt}/{max_attempts} failed "
@@ -146,6 +156,7 @@ class BaseDataCollector(ABC):
         instrument_type: str,
         period: int = 365,
         batch_size: int = DEFAULT_BATCH_SIZE,
+        run_id: str = "",
     ):
         """
         Args:
@@ -153,12 +164,15 @@ class BaseDataCollector(ABC):
             instrument_type: Instrument type (e.g., 'stocks', 'etf').
             period: Days of history to fetch.
             batch_size: Symbols per request.
+            run_id: Provenance id; generated when omitted.
         """
         self.config: StockConfig = load_config(exchange, instrument_type)
         self.exchange = self.config.exchange
         self.instrument_type = self.config.instrument_type
         self.period = period
         self.batch_size = max(1, batch_size)
+        self.run_id = run_id or new_run_id()
+        self.failed: list[tuple[str, str, str]] = []
 
         # Created up front so the error report can always be written, even when
         # every ticker fails and no price CSV is produced.
@@ -170,11 +184,15 @@ class BaseDataCollector(ABC):
         Returns:
             One row per ticker per trading day, sorted by ticker then date.
         """
-        start_date = (datetime.now() - timedelta(days=self.period)).strftime("%Y-%m-%d")
-        end_date = datetime.now().strftime("%Y-%m-%d")
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now = datetime.now()
+        start_date = (now - timedelta(days=self.period)).strftime("%Y-%m-%d")
+        # yfinance treats `end` as exclusive, so passing today drops today's
+        # completed session. Request tomorrow and let the provider return
+        # whatever sessions have actually closed.
+        end_date = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+        current_time = now.strftime("%Y-%m-%d %H:%M:%S")
 
-        logger.info(f"Starting data fetch from {start_date} to {end_date}")
+        logger.info(f"Starting data fetch from {start_date} to {end_date} (end exclusive)")
         logger.info(f"Exchange: {self.exchange}, Instrument type: {self.instrument_type}")
 
         tickers = self._read_ticker_file()
@@ -188,7 +206,7 @@ class BaseDataCollector(ABC):
         if failed:
             logger.info(f"Retrying {len(failed)} failed tickers in smaller batches")
             retry_frames, failed = self._fetch_all(
-                failed,
+                [symbol for symbol, _, _ in failed],
                 names,
                 start_date,
                 end_date,
@@ -197,13 +215,18 @@ class BaseDataCollector(ABC):
             )
             frames.extend(retry_frames)
 
+        # Always rewrite the failure report, even when empty. Skipping it left
+        # a previous run's failures on disk looking like this run's.
+        error_df = pd.DataFrame(
+            [
+                (symbol, names.get(symbol, symbol), reason, detail, self.run_id)
+                for symbol, reason, detail in failed
+            ],
+            columns=["ticker", "name", "error_type", "detail", "run_id"],
+        )
+        atomic_write_csv(error_df, self.config.error_csv)
         if failed:
             logger.warning(f"Failed to fetch data for {len(failed)}/{len(symbols)} tickers")
-            error_df = pd.DataFrame(
-                [(symbol, names.get(symbol, symbol)) for symbol in failed],
-                columns=["ticker", "name"],
-            )
-            error_df.to_csv(self.config.error_csv, index=False)
             logger.info(f"Error tickers saved to {self.config.error_csv}")
 
         if not frames:
@@ -215,11 +238,10 @@ class BaseDataCollector(ABC):
         df_all = df_all.sort_values(["ticker", "stock_price_date"], kind="mergesort")
 
         success_count = df_all["ticker"].nunique()
-        logger.info(
-            f"FETCH SUMMARY: {success_count}/{len(symbols)} tickers fetched successfully"
-        )
+        logger.info(f"FETCH SUMMARY: {success_count}/{len(symbols)} tickers fetched successfully")
         if failed:
             logger.info(f"ERROR FILE: {self.config.error_csv} ({len(failed)} failed tickers)")
+        self.failed = failed
 
         return df_all
 
@@ -230,13 +252,17 @@ class BaseDataCollector(ABC):
         start_date: str,
         end_date: str,
         current_time: str,
-        batch_size: Optional[int] = None,
-    ) -> Tuple[List[pd.DataFrame], List[str]]:
-        """Fetch ``symbols`` in batches, returning frames and failed symbols."""
+        batch_size: int | None = None,
+    ) -> tuple[list[pd.DataFrame], list[tuple[str, str, str]]]:
+        """Fetch ``symbols`` in batches.
+
+        Returns:
+            (frames, failures as (symbol, error_type, detail))
+        """
         batch_size = batch_size or self.batch_size
         batches = list(_chunk(list(symbols), batch_size))
-        frames: List[pd.DataFrame] = []
-        failed: List[str] = []
+        frames: list[pd.DataFrame] = []
+        failed: list[tuple[str, str, str]] = []
 
         for index, batch in enumerate(batches, start=1):
             logger.info(f"Batch {index}/{len(batches)} ({len(batch)} tickers)")
@@ -246,32 +272,29 @@ class BaseDataCollector(ABC):
                 )
                 frames.extend(batch_frames)
                 failed.extend(batch_failed)
-            except Exception as exc:
+            except RECOVERABLE_ERRORS as exc:
                 logger.error(f"Batch {index} failed entirely: {exc}")
-                failed.extend(batch)
+                failed.extend((symbol, type(exc).__name__, str(exc)[:200]) for symbol in batch)
+            except Exception:
+                # An unexpected exception is a defect, not a ticker failure.
+                # Publishing a partial dataset would hide it.
+                logger.exception(f"Batch {index} raised an unexpected error; aborting run")
+                raise
 
         return frames, failed
 
-    def _read_ticker_file(self) -> List[Tuple[str, str]]:
-        """Parse the ``ticker~name`` file, skipping blanks and comments."""
-        with open(self.config.ticker_file, "r") as handle:
-            lines = handle.readlines()
+    def _read_ticker_file(self) -> list[tuple[str, str]]:
+        """Load the universe, restricted to the configured asset types."""
+        universe = load_universe(self.config.ticker_file)
+        wanted = self.config.analysis.asset_types
+        screened = filter_universe(universe, wanted)
 
-        tickers = []
-        seen = set()
-        for line in lines:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            parts = line.split("~")
-            symbol = parts[0].strip()
-            if not symbol or symbol in seen:
-                continue
-            seen.add(symbol)
-            tickers.append((symbol, parts[1].strip() if len(parts) > 1 else symbol))
-
-        logger.info(f"Found {len(tickers)} tickers in {self.config.ticker_file}")
-        return tickers
+        excluded = len(universe) - len(screened)
+        logger.info(
+            f"Universe: {len(screened)} of {len(universe)} instruments match "
+            f"{wanted} ({excluded} excluded) in {self.config.ticker_file}"
+        )
+        return list(zip(screened["ticker"], screened["name"], strict=True))
 
     @abstractmethod
     def _fetch_batch(
@@ -281,26 +304,21 @@ class BaseDataCollector(ABC):
         start_date: str,
         end_date: str,
         current_time: str,
-    ) -> Tuple[List[pd.DataFrame], List[str]]:
+    ) -> tuple[list[pd.DataFrame], list[tuple[str, str, str]]]:
         """Fetch one batch of symbols.
 
         Returns:
-            (frames for symbols that returned data, symbols that returned none)
+            (frames, failures as (symbol, error_type, detail))
         """
 
-    def save_data(self, data: pd.DataFrame, filename: Optional[str] = None) -> str:
+    def save_data(self, data: pd.DataFrame, filename: str | None = None) -> str:
         """Write the fetched data to CSV and return the path ("" if empty)."""
         if data.empty:
             logger.warning("No data to save")
             return ""
 
-        filepath = (
-            os.path.join(self.config.data_dir, filename)
-            if filename
-            else self.config.eod_csv
-        )
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
-        data.to_csv(filepath, index=False)
+        filepath = os.path.join(self.config.data_dir, filename) if filename else self.config.eod_csv
+        atomic_write_csv(data, filepath)
         logger.info(f"Data saved to {filepath}")
         return filepath
 
@@ -320,14 +338,14 @@ class YahooFinanceDataFetcher(BaseDataCollector):
         start_date: str,
         end_date: str,
         current_time: str,
-    ) -> Tuple[List[pd.DataFrame], List[str]]:
+    ) -> tuple[list[pd.DataFrame], list[tuple[str, str, str]]]:
         yahoo_symbols = [self._yahoo_symbol(symbol) for symbol in symbols]
         raw = self._download(yahoo_symbols, start_date, end_date)
 
-        frames: List[pd.DataFrame] = []
-        failed: List[str] = []
+        frames: list[pd.DataFrame] = []
+        failed: list[str] = []
 
-        for symbol, yahoo_symbol in zip(symbols, yahoo_symbols):
+        for symbol, yahoo_symbol in zip(symbols, yahoo_symbols, strict=True):
             try:
                 ticker_df = self._extract(raw, yahoo_symbol)
             except KeyError:
@@ -335,7 +353,7 @@ class YahooFinanceDataFetcher(BaseDataCollector):
 
             if ticker_df is None or ticker_df.empty:
                 logger.warning(f"No data returned for {symbol}")
-                failed.append(symbol)
+                failed.append((symbol, "NoData", "provider returned no rows"))
                 continue
 
             frames.append(
@@ -362,7 +380,7 @@ class YahooFinanceDataFetcher(BaseDataCollector):
         )
 
     @staticmethod
-    def _extract(raw: pd.DataFrame, yahoo_symbol: str) -> Optional[pd.DataFrame]:
+    def _extract(raw: pd.DataFrame, yahoo_symbol: str) -> pd.DataFrame | None:
         """Pull one symbol's sub-frame out of a batched download."""
         if raw is None or raw.empty:
             return None
@@ -379,16 +397,19 @@ class YahooFinanceDataFetcher(BaseDataCollector):
         return frame.dropna(how="all")
 
     @staticmethod
-    def _normalise(
-        frame: pd.DataFrame, ticker: str, name: str, current_time: str
-    ) -> pd.DataFrame:
+    def _normalise(frame: pd.DataFrame, ticker: str, name: str, current_time: str) -> pd.DataFrame:
         """Standardise columns, round prices and attach identifying fields."""
         frame = frame.copy()
 
-        # Older/edge responses omit Adj Close; fall back so the column always
-        # exists, and record that it is unadjusted.
+        # Older/edge responses omit Adj Close. Fall back to the raw close so
+        # the column always exists, but record the substitution: an unadjusted
+        # series spanning a split produces a badly wrong return, and must not
+        # be indistinguishable from verified adjusted data.
         if "Adj Close" not in frame.columns and "Close" in frame.columns:
             frame["Adj Close"] = frame["Close"]
+            basis = BASIS_RAW_FALLBACK
+        else:
+            basis = BASIS_ADJUSTED
 
         for column in PRICE_COLUMNS:
             if column in frame.columns:
@@ -406,6 +427,7 @@ class YahooFinanceDataFetcher(BaseDataCollector):
         frame.insert(1, "ticker", ticker)
         frame.insert(2, "name", name)
         frame.insert(3, "fetch_time", current_time)
+        frame["price_basis"] = basis
 
         logger.debug(f"Fetched {len(frame)} rows for {ticker}")
         return frame
@@ -424,9 +446,7 @@ class YahooFinanceDataFetcher(BaseDataCollector):
     type=click.Choice(INSTRUMENTS, case_sensitive=False),
     help="Instrument type (e.g., stocks, etf)",
 )
-@click.option(
-    "--period", type=int, default=365, help="Number of days of historical data to fetch"
-)
+@click.option("--period", type=int, default=365, help="Number of days of historical data to fetch")
 @click.option(
     "--batch-size",
     type=int,

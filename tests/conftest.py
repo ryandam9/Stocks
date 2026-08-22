@@ -12,7 +12,9 @@ def latest_date():
     return pd.Timestamp("2026-06-02")
 
 
-def make_series(ticker, name, start, end, start_price, end_price, volume=1_000_000):
+def make_series(
+    ticker, name, start, end, start_price, end_price, volume=1_000_000, price_basis="adjusted"
+):
     """Build a linear daily price series on business days."""
     dates = pd.bdate_range(start, end)
     if len(dates) == 1:
@@ -27,7 +29,9 @@ def make_series(ticker, name, start, end, start_price, end_price, volume=1_000_0
             "name": name,
             "price": prices,
             "close": prices,
+            "adj_close": prices,
             "volume": volume,
+            "price_basis": price_basis,
         }
     )
 

@@ -21,6 +21,14 @@ config:
     min_coverage: 0.8
     # Median of N trading days at each endpoint instead of a single close.
     endpoint_window: 3
+    # Fraction of the window's expected trading sessions a ticker must have.
+    # min_coverage only checks that first and last observations span the
+    # window; this checks the history in between is actually there.
+    min_observation_ratio: 0.5
+    # Refuse to screen a price file whose newest row is older than this.
+    max_data_age_days: 5
+    # This universe is exchange-traded funds only.
+    asset_types: [etf]
     windows:
       - {months: 12, label: 1_year, threshold: 25.0}
       - {months: 6, label: 6_months, threshold: 25.0}

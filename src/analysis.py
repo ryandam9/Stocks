@@ -1,41 +1,67 @@
 """Identify tickers whose price grew materially over a set of trailing windows.
 
 Growth for a window is the percentage change between a *robust* opening and
-closing price, subject to eligibility rules that keep the output tradeable:
-
-  coverage   the ticker must actually span most of the window. Without this a
-             stock listed two weeks ago is reported in the 1-year table with
-             its two-week return.
-  freshness  the ticker must still be trading as of the latest date in the
-             dataset, so suspended or delisted names are not surfaced.
-  liquidity  median daily volume must clear a floor, since a percentage move
-             in a name that trades a few hundred shares is not realisable.
-  price      the latest price must clear a floor, denominated in the
-             exchange's own currency (see min_price in the config).
-
+closing price, subject to eligibility rules that keep the output tradeable.
 Endpoints are the median of the first and last N trading days rather than a
-single close, so one bad print cannot define a whole window's return.
+single close, so one bad print cannot define a window's return.
+
+Every run publishes a complete set of outputs. A window that matches nothing
+still writes an empty CSV with the correct header, so a later run can never
+leave an earlier run's results in place to be republished as current.
 """
 
 import os
 import sys
-from typing import Dict, List, Optional
+from typing import Any
 
 import click
 import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from config import EXCHANGE_SUFFIXES, INSTRUMENTS, AnalysisSettings, load_config
+from config import EXCHANGE_SUFFIXES, INSTRUMENTS, PROJECT_ROOT, AnalysisSettings, load_config
+from runmeta import RunManifest, atomic_write_csv, code_revision, new_run_id
+from universe import EXCHANGE_UNKNOWN, filter_universe, load_universe
 
 # Maps analysis window length (months) to the Google Finance chart parameter.
 GF_WINDOW = {12: "1Y", 6: "6M", 3: "3M", 1: "1M"}
 
 # A ticker with no prints in this many calendar days is treated as no longer
-# trading and is excluded regardless of how well it performed.
+# trading and excluded regardless of how well it performed.
 MAX_STALENESS_DAYS = 10
 
 REQUIRED_COLUMNS = {"ticker", "name", "close", "stock_price_date"}
+
+# Price provenance. Only a known raw fallback is excluded: an unadjusted series
+# spanning a split produces a badly wrong return. UNKNOWN marks data fetched
+# before provenance was recorded, which is screened with a warning.
+BASIS_ADJUSTED = "adjusted"
+BASIS_RAW_FALLBACK = "raw_fallback"
+BASIS_UNKNOWN = "unknown"
+SCREENABLE_BASES = (BASIS_ADJUSTED, BASIS_UNKNOWN)
+
+# Columns every growth CSV carries, empty or not. Fixed so that an empty
+# result is still a schema-valid file that SQLite can load.
+GROWTH_COLUMNS = [
+    "ticker",
+    "name",
+    "exchange",
+    "asset_type",
+    "first_date",
+    "first_price",
+    "last_date",
+    "latest_price",
+    "pct_change",
+    "observations",
+    "days_covered",
+    "coverage",
+    "observation_ratio",
+    "median_volume",
+    "price_basis",
+    "data_as_of",
+    "run_id",
+    "google_finance",
+]
 
 pd.set_option("display.max_columns", None)
 pd.set_option("display.max_rows", None)
@@ -43,12 +69,16 @@ pd.set_option("display.width", 1000)
 pd.set_option("display.max_colwidth", 1000)
 
 
+class StaleDataError(RuntimeError):
+    """The price dataset is too old to screen."""
+
+
 def load_price_data(file_path: str) -> pd.DataFrame:
     """Read and normalise the EOD price CSV.
 
     Raises:
         FileNotFoundError: the CSV does not exist.
-        ValueError: required columns are missing.
+        ValueError: required columns are missing or no usable rows remain.
     """
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"Price data not found: {file_path}")
@@ -57,15 +87,23 @@ def load_price_data(file_path: str) -> pd.DataFrame:
 
     missing = REQUIRED_COLUMNS - set(df.columns)
     if missing:
-        raise ValueError(
-            f"{file_path} is missing required column(s): {', '.join(sorted(missing))}"
-        )
+        raise ValueError(f"{file_path} is missing required column(s): {', '.join(sorted(missing))}")
 
     df["stock_price_date"] = pd.to_datetime(df["stock_price_date"])
 
-    # Prefer the split/dividend adjusted series. fetch_prices.py guarantees
-    # adj_close is genuinely adjusted; close is only equivalent while
-    # yfinance's auto_adjust default holds, so do not rely on it here.
+    # Prefer the adjusted series, but only where the fetcher recorded it as
+    # genuinely adjusted. price_basis distinguishes real adjusted data from a
+    # raw-close fallback; without it a split inside the window silently
+    # corrupts the return.
+    if "price_basis" not in df.columns:
+        # Written before provenance existed, so the basis genuinely cannot be
+        # determined. It must not be guessed from close == adj_close: under the
+        # provider's auto_adjust default both columns hold the *adjusted*
+        # series, so equality means "both adjusted", not "unadjusted".
+        # Screening such a file is allowed but warned about; excluding it
+        # silently would report "nothing grew" for an entire dataset.
+        df["price_basis"] = BASIS_UNKNOWN
+
     price_col = "adj_close" if "adj_close" in df.columns else "close"
     df["price"] = pd.to_numeric(df[price_col], errors="coerce")
 
@@ -82,8 +120,36 @@ def load_price_data(file_path: str) -> pd.DataFrame:
     # Duplicate (ticker, date) rows would make endpoint selection arbitrary.
     df = df.drop_duplicates(subset=["ticker", "stock_price_date"], keep="last")
 
-    # Endpoint selection below relies on rows being in date order per ticker.
+    if df.empty:
+        raise ValueError(f"No usable price rows in {file_path}")
+
+    # Endpoint selection relies on rows being in date order per ticker.
     return df.sort_values(["ticker", "stock_price_date"], kind="mergesort")
+
+
+def assert_data_is_fresh(
+    latest_date: pd.Timestamp, max_age_days: int, allow_stale: bool = False
+) -> int:
+    """Reject a dataset whose newest row is too old.
+
+    Per-ticker staleness is measured against the dataset's own latest date, so
+    it cannot detect that the dataset as a whole is out of date. A fetch that
+    has not succeeded for a month would otherwise be screened as current.
+
+    Returns:
+        Age of the dataset in days.
+
+    Raises:
+        StaleDataError: the dataset is older than ``max_age_days``.
+    """
+    age_days = (pd.Timestamp.now().normalize() - latest_date.normalize()).days
+    if age_days > max_age_days and not allow_stale:
+        raise StaleDataError(
+            f"Price data is {age_days} days old (newest row {latest_date:%Y-%m-%d}, "
+            f"limit {max_age_days} days). Re-run the fetch, or pass --allow-stale "
+            f"to screen it anyway."
+        )
+    return age_days
 
 
 def _endpoint_prices(window_df: pd.DataFrame, n: int) -> pd.DataFrame:
@@ -94,6 +160,37 @@ def _endpoint_prices(window_df: pd.DataFrame, n: int) -> pd.DataFrame:
     return pd.DataFrame({"first_price": first, "last_price": last})
 
 
+def _window_stats(
+    df: pd.DataFrame, months: int, settings: AnalysisSettings, latest_date: pd.Timestamp
+) -> tuple[pd.DataFrame, int]:
+    """Per-ticker aggregates for one window, plus the window's calendar length."""
+    cutoff = latest_date - pd.DateOffset(months=months)
+    window_df = df[df["stock_price_date"] >= cutoff]
+    if window_df.empty:
+        return pd.DataFrame(), 0
+
+    window_days = (latest_date - cutoff).days
+    # Business days approximate the exchange calendar closely enough to detect
+    # a history that is mostly missing; holidays cost a few percent at most.
+    expected_sessions = max(1, len(pd.bdate_range(cutoff, latest_date)))
+
+    stats = window_df.groupby("ticker", sort=False).agg(
+        name=("name", "first"),
+        first_date=("stock_price_date", "min"),
+        last_date=("stock_price_date", "max"),
+        observations=("price", "size"),
+        median_volume=("volume", "median"),
+        price_basis=("price_basis", "min"),
+    )
+    stats = stats.join(_endpoint_prices(window_df, settings.endpoint_window))
+
+    stats["days_covered"] = (stats["last_date"] - stats["first_date"]).dt.days
+    stats["coverage"] = stats["days_covered"] / window_days
+    stats["observation_ratio"] = stats["observations"] / expected_sessions
+    stats["staleness_days"] = (latest_date - stats["last_date"]).dt.days
+    return stats, window_days
+
+
 def compute_window_growth(
     df: pd.DataFrame,
     months: int,
@@ -101,8 +198,10 @@ def compute_window_growth(
     settings: AnalysisSettings,
     latest_date: pd.Timestamp,
     exchange: str,
-) -> pd.DataFrame:
-    """Return the growth table for one trailing window.
+    metadata: pd.DataFrame | None = None,
+    run_id: str = "",
+) -> tuple[pd.DataFrame, list[tuple[str, int]]]:
+    """Return the growth table for one trailing window, plus its funnel.
 
     Args:
         df: normalised price data for all tickers.
@@ -110,119 +209,101 @@ def compute_window_growth(
         threshold: minimum percentage change to qualify.
         settings: eligibility thresholds.
         latest_date: most recent date present in ``df``.
-        exchange: exchange code, used to build Google Finance links.
+        exchange: configured exchange code, used only when a ticker's own
+            exchange is unknown.
+        metadata: optional universe frame supplying exchange and asset_type.
+        run_id: stamped onto every row for provenance.
 
     Returns:
-        Qualifying tickers sorted by percentage change, descending.
+        (qualifying tickers sorted by pct_change desc, funnel stage counts)
     """
-    cutoff = latest_date - pd.DateOffset(months=months)
-    window_df = df[df["stock_price_date"] >= cutoff]
-    if window_df.empty:
-        return pd.DataFrame()
+    stats, _ = _window_stats(df, months, settings, latest_date)
+    if stats.empty:
+        return pd.DataFrame(columns=GROWTH_COLUMNS), [("Universe in window", 0)]
 
-    window_days = (latest_date - cutoff).days
-    grouped = window_df.groupby("ticker", sort=False)
+    # Endpoint windows must not overlap, or first and last describe partly the
+    # same days and the measured change is damped toward zero.
+    min_observations = max(2, 2 * settings.endpoint_window)
 
-    stats = grouped.agg(
-        name=("name", "first"),
-        first_date=("stock_price_date", "min"),
-        last_date=("stock_price_date", "max"),
-        observations=("price", "size"),
-        median_volume=("volume", "median"),
-    )
-    stats = stats.join(_endpoint_prices(window_df, settings.endpoint_window))
+    funnel: list[tuple[str, int]] = [("Universe in window", len(stats))]
+    stages = [
+        ("Enough span", stats["coverage"] >= settings.min_coverage),
+        (
+            "Enough observations",
+            (stats["observation_ratio"] >= settings.min_observation_ratio)
+            & (stats["observations"] >= min_observations),
+        ),
+        ("Still trading", stats["staleness_days"] <= MAX_STALENESS_DAYS),
+        ("Adjusted prices", stats["price_basis"].isin(SCREENABLE_BASES)),
+        ("Liquid enough", stats["median_volume"] >= settings.min_median_volume),
+        ("Above price floor", stats["last_price"] >= settings.min_price),
+        ("Valid baseline", stats["first_price"] > 0),
+    ]
 
-    stats["days_covered"] = (stats["last_date"] - stats["first_date"]).dt.days
-    stats["coverage"] = stats["days_covered"] / window_days
-    stats["staleness_days"] = (latest_date - stats["last_date"]).dt.days
+    kept = stats
+    for label, condition in stages:
+        kept = kept[condition.reindex(kept.index, fill_value=False)]
+        funnel.append((label, len(kept)))
 
-    eligible = (
-        (stats["coverage"] >= settings.min_coverage)
-        & (stats["staleness_days"] <= MAX_STALENESS_DAYS)
-        & (stats["median_volume"] >= settings.min_median_volume)
-        & (stats["last_price"] >= settings.min_price)
-        # Guards against a divide-by-zero producing an infinite return.
-        & (stats["first_price"] > 0)
-        # At least two observations, else first and last are the same print.
-        & (stats["observations"] >= 2)
-    )
-    result = stats[eligible].copy()
-    if result.empty:
-        return pd.DataFrame()
+    if kept.empty:
+        funnel.append((f"Return above {threshold}%", 0))
+        return pd.DataFrame(columns=GROWTH_COLUMNS), funnel
 
+    result = kept.copy()
     result["pct_change"] = (
         (result["last_price"] - result["first_price"]) / result["first_price"] * 100
     ).round(2)
     result = result[result["pct_change"] > threshold]
+    funnel.append((f"Return above {threshold}%", len(result)))
+
     if result.empty:
-        return pd.DataFrame()
+        return pd.DataFrame(columns=GROWTH_COLUMNS), funnel
 
     result = result.reset_index().rename(columns={"last_price": "latest_price"})
+
+    # Attach the ticker's real listing exchange. Falling back to the configured
+    # exchange for everything is what produced links labelling NYSE securities
+    # as NASDAQ.
+    if metadata is not None and not metadata.empty:
+        result = result.merge(
+            metadata[["ticker", "exchange", "asset_type"]], on="ticker", how="left"
+        )
+    else:
+        result["exchange"] = EXCHANGE_UNKNOWN
+        result["asset_type"] = ""
+    result["exchange"] = result["exchange"].fillna(EXCHANGE_UNKNOWN).replace("", EXCHANGE_UNKNOWN)
+    result["asset_type"] = result["asset_type"].fillna("")
+
     result["first_price"] = result["first_price"].round(4)
     result["latest_price"] = result["latest_price"].round(4)
     result["coverage"] = result["coverage"].round(3)
+    result["observation_ratio"] = result["observation_ratio"].round(3)
     result["median_volume"] = result["median_volume"].round(0)
     result["first_date"] = result["first_date"].dt.strftime("%Y-%m-%d")
     result["last_date"] = result["last_date"].dt.strftime("%Y-%m-%d")
-    result["google_finance"] = (
-        "https://www.google.com/finance/beta/quote/"
-        + result["ticker"].str.upper()
+    result["data_as_of"] = latest_date.strftime("%Y-%m-%d")
+    result["run_id"] = run_id
+
+    # A link is only emitted when the true exchange is known; a guessed
+    # exchange code produces a page for the wrong security.
+    known = result["exchange"] != EXCHANGE_UNKNOWN
+    result["google_finance"] = ""
+    result.loc[known, "google_finance"] = (
+        "https://www.google.com/finance/quote/"
+        + result.loc[known, "ticker"].str.upper()
         + ":"
-        + exchange.upper()
+        + result.loc[known, "exchange"].str.upper()
         + "?window="
         + GF_WINDOW.get(months, "1Y")
     )
 
-    columns = [
-        "ticker",
-        "name",
-        "first_date",
-        "first_price",
-        "last_date",
-        "latest_price",
-        "pct_change",
-        "observations",
-        "days_covered",
-        "coverage",
-        "median_volume",
-        "google_finance",
-    ]
-    return result[columns].sort_values("pct_change", ascending=False)
+    return result[GROWTH_COLUMNS].sort_values("pct_change", ascending=False), funnel
 
 
-def _log_exclusions(
-    df: pd.DataFrame,
-    months: int,
-    settings: AnalysisSettings,
-    latest_date: pd.Timestamp,
-    label: str,
-) -> None:
-    """Report how many tickers each eligibility rule removed.
-
-    Silent filtering reads as "nothing qualified" when the real cause is a
-    threshold, so the counts are printed on every run.
-    """
-    cutoff = latest_date - pd.DateOffset(months=months)
-    window_df = df[df["stock_price_date"] >= cutoff]
-    if window_df.empty:
-        return
-    window_days = (latest_date - cutoff).days
-    grouped = window_df.groupby("ticker", sort=False)
-    stats = grouped.agg(
-        first_date=("stock_price_date", "min"),
-        last_date=("stock_price_date", "max"),
-        median_volume=("volume", "median"),
-    )
-    coverage = (stats["last_date"] - stats["first_date"]).dt.days / window_days
-    stale = (latest_date - stats["last_date"]).dt.days
-    short = int((coverage < settings.min_coverage).sum())
-    inactive = int((stale > MAX_STALENESS_DAYS).sum())
-    illiquid = int((stats["median_volume"] < settings.min_median_volume).sum())
-    print(
-        f"  eligibility ({label}): {len(stats)} tickers in window; "
-        f"excluded {short} short-history, {inactive} not currently trading, "
-        f"{illiquid} illiquid"
-    )
+def _print_funnel(funnel: list[tuple[str, int]]) -> None:
+    """Print the eligibility funnel so an empty result is never ambiguous."""
+    for label, count in funnel:
+        print(f"    {label:<28} {count:>7,}")
 
 
 def _growth_output_path(eod_path: str, suffix: str) -> str:
@@ -233,24 +314,22 @@ def _growth_output_path(eod_path: str, suffix: str) -> str:
 
 def build_combined_growth(
     df: pd.DataFrame,
-    results: Dict[str, pd.DataFrame],
+    results: dict[str, pd.DataFrame],
     file_path: str,
-    abbreviations: Dict[str, str],
-) -> Optional[str]:
+    abbreviations: dict[str, str],
+    run_id: str = "",
+) -> str:
     """Write full price history for every ticker that grew in any window.
 
     Each row carries ``growth_count`` (how many windows the ticker qualified
     in) and ``growth_periods`` (which ones). Built with pandas rather than awk
-    so that the comma-separated period list and names containing commas are
-    quoted correctly on the way out.
+    so the comma-separated period list and names containing commas are quoted
+    correctly on the way out.
 
-    Args:
-        df: normalised price data for all tickers.
-        results: per-window growth tables, keyed by window label.
-        file_path: path of the EOD CSV the outputs sit alongside.
-        abbreviations: window label -> short form used in growth_periods.
+    Always writes a file, empty-but-headed when nothing qualified, so a later
+    run cannot leave an earlier run's combined history in place.
     """
-    flags: Dict[str, List[str]] = {}
+    flags: dict[str, list[str]] = {}
     for label, result in results.items():
         if result.empty:
             continue
@@ -258,10 +337,15 @@ def build_combined_growth(
         for ticker in result["ticker"]:
             flags.setdefault(ticker, []).append(short_label)
 
-    if not flags:
-        return None
+    output_path = _growth_output_path(file_path, "_growth")
+    base_columns = [c for c in df.columns if c != "price"]
 
-    # Preserve the window ordering from the config rather than insertion order.
+    if not flags:
+        empty = pd.DataFrame(columns=base_columns + ["growth_count", "growth_periods", "run_id"])
+        atomic_write_csv(empty, output_path)
+        print(f"\nCombined growth history: 0 rows (no ticker qualified) -> {output_path}")
+        return output_path
+
     order = {abbrev: i for i, abbrev in enumerate(abbreviations.values())}
     summary = pd.DataFrame(
         [
@@ -277,9 +361,9 @@ def build_combined_growth(
     combined = df.merge(summary, on="ticker", how="inner")
     combined = combined.drop(columns=["price"], errors="ignore")
     combined["stock_price_date"] = combined["stock_price_date"].dt.strftime("%Y-%m-%d")
+    combined["run_id"] = run_id
 
-    output_path = _growth_output_path(file_path, "_growth")
-    combined.to_csv(output_path, index=False)
+    atomic_write_csv(combined, output_path)
     print(
         f"\nCombined growth history: {len(combined):,} rows for "
         f"{len(summary):,} tickers -> {output_path}"
@@ -287,48 +371,119 @@ def build_combined_growth(
     return output_path
 
 
-def analyze_stocks(file_path: str, exchange: str, settings: AnalysisSettings) -> None:
-    """Run every configured window and write one CSV per window."""
-    df = load_price_data(file_path)
-    if df.empty:
-        print(f"No usable price rows in {file_path}")
-        return
+def analyze_stocks(
+    cfg,
+    allow_stale: bool = False,
+    run_id: str = "",
+) -> RunManifest:
+    """Run every configured window and publish a complete set of outputs."""
+    settings = cfg.analysis
+    run_id = run_id or new_run_id()
+    manifest = RunManifest(
+        run_id=run_id,
+        stage="analysis",
+        exchange=cfg.exchange,
+        instrument_type=cfg.instrument_type,
+        started_at=pd.Timestamp.now(tz="UTC").isoformat(),
+        code_revision=code_revision(PROJECT_ROOT),
+        universe_file=cfg.ticker_file,
+        thresholds={
+            "min_price": settings.min_price,
+            "min_median_volume": settings.min_median_volume,
+            "min_coverage": settings.min_coverage,
+            "min_observation_ratio": settings.min_observation_ratio,
+            "endpoint_window": settings.endpoint_window,
+            "max_data_age_days": settings.max_data_age_days,
+            "asset_types": settings.asset_types,
+            "windows": settings.windows,
+        },
+    )
 
+    df = load_price_data(cfg.eod_csv)
     latest_date = df["stock_price_date"].max()
-    print(f"Loaded {len(df):,} rows for {df['ticker'].nunique():,} tickers")
-    print(f"Latest price date: {latest_date:%Y-%m-%d}")
+    age_days = assert_data_is_fresh(latest_date, settings.max_data_age_days, allow_stale)
 
-    # Window label -> short form used in the growth_periods column, in the
-    # order the windows are configured.
+    manifest.data_as_of = latest_date.strftime("%Y-%m-%d")
+
+    # Restrict to the requested instrument categories. Warrants, units and
+    # preferred lines are not ordinary equity exposure and should not appear
+    # in a screen labelled "stocks".
+    metadata = load_universe(cfg.ticker_file)
+    manifest.universe_total = len(metadata)
+    screened = filter_universe(metadata, settings.asset_types)
+    manifest.universe_screened = len(screened)
+
+    excluded_types = len(metadata) - len(screened)
+    df = df[df["ticker"].isin(set(screened["ticker"]))]
+    if df.empty:
+        raise ValueError(
+            f"No price rows remain after filtering to asset types "
+            f"{settings.asset_types}. Check the universe file: {cfg.ticker_file}"
+        )
+
+    print(f"Run {run_id}")
+    print(f"Loaded {len(df):,} rows for {df['ticker'].nunique():,} tickers")
+    print(f"Data as of {latest_date:%Y-%m-%d} ({age_days} day(s) old)")
+    if (df["price_basis"] == BASIS_UNKNOWN).any():
+        print(
+            "Warning: this price file predates adjusted-price provenance, so the "
+            "basis cannot be verified. Re-run the fetch to record it."
+        )
+    if excluded_types:
+        print(
+            f"Universe: {len(screened):,} of {len(metadata):,} instruments match "
+            f"{settings.asset_types} ({excluded_types:,} excluded)"
+        )
+    unknown_exchange = int((screened["exchange"] == EXCHANGE_UNKNOWN).sum())
+    if unknown_exchange:
+        print(
+            f"Note: {unknown_exchange:,} instruments have an unknown listing exchange; "
+            f"their Google Finance links are omitted. Run: "
+            f"uv run src/universe.py refresh {cfg.exchange} {cfg.instrument_type}"
+        )
+
     abbreviations = {
-        str(w["label"]): GF_WINDOW.get(int(w["months"]), str(w["label"]))
-        for w in settings.windows
+        str(w["label"]): GF_WINDOW.get(int(w["months"]), str(w["label"])) for w in settings.windows
     }
 
-    results: Dict[str, pd.DataFrame] = {}
+    results: dict[str, pd.DataFrame] = {}
+    outputs: dict[str, Any] = {}
+    counts: dict[str, Any] = {}
+
     for window in settings.windows:
         months = int(window["months"])
         label = str(window["label"])
         threshold = float(window["threshold"])
 
         print(f"\n--- Tickers with >{threshold}% growth over the last {label} ---")
-        _log_exclusions(df, months, settings, latest_date, label)
-
-        result = compute_window_growth(
-            df, months, threshold, settings, latest_date, exchange
+        result, funnel = compute_window_growth(
+            df, months, threshold, settings, latest_date, cfg.exchange, screened, run_id
         )
+        _print_funnel(funnel)
         results[label] = result
+        counts[label] = dict(funnel)
 
-        if result.empty:
-            print("None found.")
-            continue
+        if not result.empty:
+            print(result.to_string(index=False))
 
-        print(result.to_string(index=False))
-        output_path = _growth_output_path(file_path, f"_growth_{label}")
-        result.to_csv(output_path, index=False)
-        print(f"Saved {len(result)} rows to: {output_path}")
+        # Always publish, empty or not: a skipped write would leave the
+        # previous run's file to be loaded as this run's result.
+        output_path = _growth_output_path(cfg.eod_csv, f"_growth_{label}")
+        atomic_write_csv(result, output_path)
+        outputs[label] = {"path": output_path, "rows": len(result)}
+        print(f"Wrote {len(result)} rows to: {output_path}")
 
-    build_combined_growth(df, results, file_path, abbreviations)
+    combined_path = build_combined_growth(df, results, cfg.eod_csv, abbreviations, run_id)
+    outputs["combined"] = {"path": combined_path}
+
+    manifest.counts = counts
+    manifest.outputs = outputs
+    manifest.finish("success")
+    manifest_path = manifest.write(
+        os.path.join(cfg.data_dir, f"{cfg.prefix}_analysis_manifest.json")
+    )
+    print(f"\nManifest: {manifest_path}")
+    return manifest
 
 
 @click.command(help="Analyze EOD price data for growth over trailing windows")
@@ -344,10 +499,18 @@ def analyze_stocks(file_path: str, exchange: str, settings: AnalysisSettings) ->
     type=click.Choice(INSTRUMENTS, case_sensitive=False),
     help="Instrument type (e.g., stocks, etf)",
 )
-def main(exchange, instrument_type):
+@click.option(
+    "--allow-stale",
+    is_flag=True,
+    help="Screen the data even if it is older than max_data_age_days",
+)
+def main(exchange, instrument_type, allow_stale):
     try:
         cfg = load_config(exchange, instrument_type)
-        analyze_stocks(cfg.eod_csv, cfg.exchange, cfg.analysis)
+        analyze_stocks(cfg, allow_stale=allow_stale)
+    except StaleDataError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(2)
     except Exception as exc:
         click.echo(f"Error: {exc}", err=True)
         sys.exit(1)

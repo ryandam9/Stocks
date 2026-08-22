@@ -10,8 +10,8 @@ outside the repository without editing any config file.
 """
 
 import os
+import re
 from dataclasses import dataclass, field
-from typing import Dict, List
 
 import yaml
 
@@ -33,6 +33,9 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # resolved against this root, which defaults to <project_root>/data.
 DATA_ROOT_ENV = "STOCKS_DATA_ROOT"
 DEFAULT_DATA_ROOT = os.path.join(PROJECT_ROOT, "data")
+
+# Window labels become filename fragments and SQLite identifiers.
+_SAFE_LABEL = re.compile(r"[A-Za-z0-9_]+")
 
 # Used when a config file omits the analysis block entirely.
 DEFAULT_WINDOWS = [
@@ -58,10 +61,21 @@ class AnalysisSettings:
     # reported for it. Without this a stock listed 2 weeks ago shows up in
     # the 1-year table with its 2-week return.
     min_coverage: float = 0.8
-    # Number of trading days median-averaged at each endpoint. 1 restores the
-    # old single-day behaviour; 3 removes most single-print noise.
+    # Number of trading days median-averaged at each endpoint. 1 restores
+    # single-day behaviour; 3 removes most single-print noise.
     endpoint_window: int = 3
-    windows: List[Dict] = field(default_factory=lambda: list(DEFAULT_WINDOWS))
+    # Fraction of the window's *expected trading sessions* a ticker must
+    # actually have. Distinct from min_coverage, which only checks that the
+    # first and last observations span the window: a ticker with two prints a
+    # year apart has full span coverage but no usable history.
+    min_observation_ratio: float = 0.5
+    # Reject the whole dataset if its newest row is older than this many days.
+    # Guards against screening a stale CSV as though it were current.
+    max_data_age_days: int = 5
+    # Instrument categories to screen. Warrants, units and preferred lines are
+    # excluded by default; they are not ordinary equity exposure.
+    asset_types: list[str] = field(default_factory=lambda: ["common_stock", "etf"])
+    windows: list[dict] = field(default_factory=lambda: list(DEFAULT_WINDOWS))
 
 
 @dataclass
@@ -89,7 +103,7 @@ class StockConfig:
         return os.path.join(self.data_dir, f"{self.prefix}_error.csv")
 
     @property
-    def growth_labels(self) -> List[str]:
+    def growth_labels(self) -> list[str]:
         """Window labels in config order, e.g. ["1_year", "6_months", ...]."""
         return [str(w["label"]) for w in self.analysis.windows]
 
@@ -105,6 +119,39 @@ class StockConfig:
     def _growth_path(self, suffix: str) -> str:
         stem, extension = os.path.splitext(self.eod_csv)
         return f"{stem}{suffix}{extension}"
+
+
+def _require_range(
+    section: dict,
+    key: str,
+    low: float,
+    high: float,
+    path: str,
+    exclusive_min: bool = False,
+) -> None:
+    """Reject a numeric setting that falls outside its meaningful range."""
+    if key not in section:
+        return
+    value = float(section[key])
+    too_low = value <= low if exclusive_min else value < low
+    if too_low or value > high:
+        bound = "(" if exclusive_min else "["
+        raise ValueError(f"{path}: {key} must be in {bound}{low}, {high}], got {value}")
+
+
+def _require_positive(section: dict, key: str, path: str, integer: bool = False) -> None:
+    if key not in section:
+        return
+    value = int(section[key]) if integer else float(section[key])
+    if value < 1:
+        raise ValueError(f"{path}: {key} must be >= 1, got {section[key]}")
+
+
+def _require_non_negative(section: dict, key: str, path: str) -> None:
+    if key not in section:
+        return
+    if float(section[key]) < 0:
+        raise ValueError(f"{path}: {key} must be >= 0, got {section[key]}")
 
 
 def _resolve(path: str, base: str) -> str:
@@ -130,8 +177,7 @@ def load_config(exchange: str, instrument_type: str) -> StockConfig:
     """
     if exchange.upper() not in EXCHANGE_SUFFIXES:
         raise ValueError(
-            f"Unsupported exchange: {exchange}. "
-            f"Supported exchanges: {', '.join(EXCHANGE_SUFFIXES)}"
+            f"Unsupported exchange: {exchange}. Supported exchanges: {', '.join(EXCHANGE_SUFFIXES)}"
         )
     if instrument_type.lower() not in INSTRUMENTS:
         raise ValueError(
@@ -143,18 +189,18 @@ def load_config(exchange: str, instrument_type: str) -> StockConfig:
     if not os.path.exists(path):
         raise FileNotFoundError(f"No config file for {exchange}/{instrument_type}: {path}")
 
-    with open(path, "r") as handle:
+    with open(path) as handle:
         raw = yaml.safe_load(handle) or {}
 
     try:
         section = raw["config"]
-    except KeyError:
-        raise KeyError(f"{path} is missing the top-level 'config' key")
+    except KeyError as exc:
+        raise KeyError(f"{path} is missing the top-level 'config' key") from exc
 
     try:
         ticker_file = section["ticker_file"]
-    except KeyError:
-        raise KeyError(f"{path} is missing required key 'config.ticker_file'")
+    except KeyError as exc:
+        raise KeyError(f"{path} is missing required key 'config.ticker_file'") from exc
 
     # Generated artefacts live under STOCKS_DATA_ROOT when it is set, so the
     # checked-in config stays portable across machines. data_dir/db_path in the
@@ -168,15 +214,41 @@ def load_config(exchange: str, instrument_type: str) -> StockConfig:
         missing = {"months", "label", "threshold"} - set(window)
         if missing:
             raise KeyError(
-                f"{path}: analysis window {window} is missing key(s): "
-                f"{', '.join(sorted(missing))}"
+                f"{path}: analysis window {window} is missing key(s): {', '.join(sorted(missing))}"
             )
+
+    _require_range(analysis_raw, "min_coverage", 0.0, 1.0, path, exclusive_min=True)
+    _require_range(analysis_raw, "min_observation_ratio", 0.0, 1.0, path)
+    _require_positive(analysis_raw, "endpoint_window", path, integer=True)
+    _require_positive(analysis_raw, "max_data_age_days", path, integer=True)
+    _require_non_negative(analysis_raw, "min_price", path)
+    _require_non_negative(analysis_raw, "min_median_volume", path)
+
+    labels = [str(w["label"]) for w in windows]
+    duplicates = {label for label in labels if labels.count(label) > 1}
+    if duplicates:
+        raise ValueError(
+            f"{path}: duplicate window label(s): {', '.join(sorted(duplicates))}. "
+            "Labels name output files and SQLite tables, so they must be unique."
+        )
+    for label in labels:
+        if not _SAFE_LABEL.fullmatch(label):
+            raise ValueError(
+                f"{path}: window label '{label}' must match [A-Za-z0-9_]+ so it is "
+                "safe in filenames and SQLite identifiers"
+            )
+    for window in windows:
+        if int(window["months"]) < 1:
+            raise ValueError(f"{path}: window '{window['label']}' needs months >= 1")
 
     analysis = AnalysisSettings(
         min_price=float(analysis_raw.get("min_price", 10.0)),
         min_median_volume=float(analysis_raw.get("min_median_volume", 50_000.0)),
         min_coverage=float(analysis_raw.get("min_coverage", 0.8)),
         endpoint_window=int(analysis_raw.get("endpoint_window", 3)),
+        min_observation_ratio=float(analysis_raw.get("min_observation_ratio", 0.5)),
+        max_data_age_days=int(analysis_raw.get("max_data_age_days", 5)),
+        asset_types=list(analysis_raw.get("asset_types", ["common_stock", "etf"])),
         windows=list(windows),
     )
 

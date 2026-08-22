@@ -4,7 +4,7 @@ import pytest
 import yaml
 
 import config as cfg_mod
-from config import PROJECT_ROOT, load_config
+from config import load_config
 
 
 def write_config(tmp_path, monkeypatch, body, name="nasdaq_stocks_config.yaml"):
@@ -73,9 +73,7 @@ def test_missing_ticker_file_key_names_the_key(tmp_path, monkeypatch):
 
 def test_malformed_window_is_rejected(tmp_path, monkeypatch):
     body = {
-        "config": dict(
-            BASE["config"], analysis={"windows": [{"months": 12, "label": "1_year"}]}
-        )
+        "config": dict(BASE["config"], analysis={"windows": [{"months": 12, "label": "1_year"}]})
     }
     write_config(tmp_path, monkeypatch, body)
     with pytest.raises(KeyError, match="threshold"):
