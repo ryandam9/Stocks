@@ -114,3 +114,57 @@ def test_upload_requires_boto3(monkeypatch, tmp_path):
     monkeypatch.setitem(__import__("sys").modules, "boto3", None)
     with pytest.raises((RuntimeError, TypeError, AttributeError)):
         pipeline.upload_to_s3(str(db), "s3://bucket")
+
+
+# ------------------------------------------------------------------ S3 upload
+
+
+@pytest.mark.parametrize(
+    "bucket,auto,expected",
+    [
+        ("s3://b", "true", True),
+        ("s3://b", "1", True),
+        ("s3://b", "yes", True),
+        ("s3://b", "false", False),
+        ("s3://b", "", False),
+        ("", "true", False),
+    ],
+)
+def test_auto_upload_requires_both_settings(monkeypatch, bucket, auto, expected):
+    """Sending data off the machine stays opt-in, never a silent default."""
+    monkeypatch.setenv("S3_BUCKET", bucket)
+    monkeypatch.setenv("S3_AUTO_UPLOAD", auto)
+    assert pipeline.should_auto_upload() is expected
+
+
+def test_auto_upload_off_when_unset(monkeypatch):
+    monkeypatch.delenv("S3_BUCKET", raising=False)
+    monkeypatch.delenv("S3_AUTO_UPLOAD", raising=False)
+    assert pipeline.should_auto_upload() is False
+
+
+def test_upload_builds_the_expected_key(tmp_path, monkeypatch):
+    """Bucket may be given with or without s3://, and with a key prefix."""
+    db = tmp_path / "us.db"
+    db.write_bytes(b"x")
+    calls = []
+
+    class FakeClient:
+        def upload_file(self, path, bucket, key):
+            calls.append((path, bucket, key))
+
+    fake_boto3 = type("m", (), {"client": staticmethod(lambda *a, **k: FakeClient())})
+    monkeypatch.setitem(__import__("sys").modules, "boto3", fake_boto3)
+
+    assert pipeline.upload_to_s3(str(db), "s3://hive") == "s3://hive/us.db"
+    assert pipeline.upload_to_s3(str(db), "hive") == "s3://hive/us.db"
+    assert pipeline.upload_to_s3(str(db), "s3://hive/daily") == "s3://hive/daily/us.db"
+    assert [c[1] for c in calls] == ["hive", "hive", "hive"]
+    assert [c[2] for c in calls] == ["us.db", "us.db", "daily/us.db"]
+
+
+def test_upload_missing_file_raises(tmp_path, monkeypatch):
+    fake_boto3 = type("m", (), {"client": staticmethod(lambda *a, **k: None)})
+    monkeypatch.setitem(__import__("sys").modules, "boto3", fake_boto3)
+    with pytest.raises(FileNotFoundError, match="Nothing to upload"):
+        pipeline.upload_to_s3(str(tmp_path / "gone.db"), "s3://b")

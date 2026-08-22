@@ -190,6 +190,11 @@ trap - EXIT
 log "  DB published: $DB"
 
 # ── 4. Upload DB to S3 (opt-in) ───────────────────────────────────────────────
+# S3_AUTO_UPLOAD makes publication routine without passing --upload each time.
+case "${S3_AUTO_UPLOAD:-}" in
+    1 | true | yes | on) [[ -n "${S3_BUCKET:-}" ]] && UPLOAD=true ;;
+esac
+
 if [[ "$UPLOAD" == true ]]; then
     [[ -n "${S3_BUCKET:-}" ]] || {
         echo "Error: --upload given but S3_BUCKET is not set" >&2

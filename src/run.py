@@ -119,13 +119,13 @@ def main(
         if job in ("analyze", "publish", "all"):
             pipeline.publish(cfg)
 
-        if upload:
+        # --upload forces publication; S3_AUTO_UPLOAD=true makes it routine.
+        if upload or pipeline.should_auto_upload():
             bucket = os.environ.get("S3_BUCKET")
             if not bucket:
                 raise RuntimeError("--upload given but S3_BUCKET is not set")
-            logger.info(
-                f"Uploaded to {pipeline.upload_to_s3(cfg.db_path, bucket, os.environ.get('S3_REGION'))}"
-            )
+            target = pipeline.upload_to_s3(cfg.db_path, bucket, os.environ.get("S3_REGION"))
+            logger.info(f"Uploaded to {target}")
 
     except StaleDataError as exc:
         logger.error(str(exc))

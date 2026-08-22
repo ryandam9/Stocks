@@ -180,19 +180,40 @@ def publish(cfg: StockConfig) -> str:
         raise
 
 
+def should_auto_upload() -> bool:
+    """Whether to publish to S3 without an explicit --upload flag.
+
+    Sending data to a remote bucket is not something to do by default, so it
+    stays opt-in: both S3_BUCKET and S3_AUTO_UPLOAD must be set.
+    """
+    truthy = {"1", "true", "yes", "on"}
+    return bool(os.environ.get("S3_BUCKET")) and (
+        os.environ.get("S3_AUTO_UPLOAD", "").strip().lower() in truthy
+    )
+
+
 def upload_to_s3(db_path: str, bucket: str, region: str | None = None) -> str:
     """Upload the published database to S3.
 
     Raises:
         RuntimeError: boto3 is not installed.
+        FileNotFoundError: the database does not exist.
     """
     try:
         import boto3
     except ImportError:
         raise RuntimeError("S3 upload needs boto3: uv pip install boto3") from None
 
-    bucket = bucket.removeprefix("s3://").rstrip("/")
-    key = os.path.basename(db_path)
+    if not os.path.exists(db_path):
+        raise FileNotFoundError(f"Nothing to upload: {db_path}")
+
+    # Accept the bucket with or without the s3:// prefix, and an optional
+    # key prefix after it.
+    location = bucket.removeprefix("s3://").strip("/")
+    bucket, _, prefix = location.partition("/")
+    key = f"{prefix}/{os.path.basename(db_path)}" if prefix else os.path.basename(db_path)
     client = boto3.client("s3", region_name=region) if region else boto3.client("s3")
+    size_mb = os.path.getsize(db_path) / 1048576
+    logger.info(f"  Uploading {size_mb:.2f} MB -> s3://{bucket}/{key}")
     client.upload_file(db_path, bucket, key)
     return f"s3://{bucket}/{key}"

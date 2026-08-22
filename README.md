@@ -374,12 +374,31 @@ Useful flags:
 | `--prune` | universe enrich | Drop instruments the provider no longer lists |
 | `--upload` | run_analysis.sh | Upload the DB to S3 (needs `S3_BUCKET`) |
 
-Uploading the published database to S3:
+### Publishing to S3
+
+Set the bucket in `.env` and the database is uploaded after every successful
+build:
 
 ```bash
-S3_BUCKET=s3://your-bucket S3_REGION=ap-southeast-2 \
-  ./scripts/run_analysis.sh US stocks --upload
+S3_BUCKET=s3://your-bucket
+S3_REGION=ap-southeast-2
+S3_AUTO_UPLOAD=true
 ```
+
+Both settings are required: `S3_BUCKET` alone does nothing, so data is never
+sent off the machine by default. Without `S3_AUTO_UPLOAD`, pass `--upload` for
+a one-off:
+
+```bash
+./scripts/run_analysis.sh US stocks --upload
+uv run src/run.py analyze --exchange US --instrument-type stocks --upload
+```
+
+The key is the database filename (`us.db`, `asx.db`) at the bucket root. A
+prefix works too — `S3_BUCKET=s3://your-bucket/daily` writes `daily/us.db`.
+
+Uploads use `boto3`, not the `aws` CLI, so the container image stays small. In
+AWS, give the task an IAM role rather than credentials in the environment.
 
 ## How growth is measured
 
