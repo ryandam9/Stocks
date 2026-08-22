@@ -545,7 +545,21 @@ tables are created from a declared schema, so their column types do not change
 when a screen happens to be empty.
 
 SQLite tables mirror those CSVs, plus `consistent_growth_stocks` — tickers
-that qualified in **every** configured window.
+that qualified in every **month-scale** window. Day-scale windows such as
+`7_days` are deliberately excluded from it: that table answers "grew
+consistently across timeframes", and folding a one-week window in would
+silently narrow it to "and also rose this week", a far more selective and
+quite different signal. The short window is published as its own table, so
+both questions can be asked separately:
+
+```sql
+-- sustained growers
+SELECT * FROM consistent_growth_stocks;
+
+-- sustained growers that are also moving right now
+SELECT c.* FROM consistent_growth_stocks c
+JOIN us_stocks_growth_7_days w USING (ticker);
+```
 
 ### Database size
 

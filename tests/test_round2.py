@@ -817,3 +817,35 @@ def test_shipped_configs_have_the_seven_day_window():
     for exchange, instrument in [("US", "stocks"), ("ASX", "etf")]:
         cfg = load_config(exchange, instrument)
         assert "7_days" in cfg.growth_labels
+
+
+def test_consistent_growth_excludes_day_windows():
+    """That table means "consistent across timeframes", not "also rose this week"."""
+    cfg = load_config("US", "stocks")
+    assert "7_days" in cfg.growth_labels
+    assert "7_days" not in cfg.consistent_growth_labels
+    assert cfg.consistent_growth_labels == ["1_year", "6_months", "3_months", "1_month"]
+
+
+def test_consistent_growth_labels_are_month_windows_only(tmp_path, monkeypatch):
+    cfg = build_project(
+        tmp_path,
+        monkeypatch,
+        windows=[
+            {"months": 12, "label": "1_year", "threshold": 25.0},
+            {"days": 7, "label": "7_days", "threshold": 10.0},
+            {"days": 30, "label": "30_days", "threshold": 10.0},
+        ],
+    )
+    assert cfg.growth_labels == ["1_year", "7_days", "30_days"]
+    assert cfg.consistent_growth_labels == ["1_year"]
+
+
+def test_all_day_windows_leaves_no_consistent_labels(tmp_path, monkeypatch):
+    """The shell must skip the table rather than build a broken query."""
+    cfg = build_project(
+        tmp_path,
+        monkeypatch,
+        windows=[{"days": 7, "label": "7_days", "threshold": 10.0}],
+    )
+    assert cfg.consistent_growth_labels == []

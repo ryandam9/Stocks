@@ -60,6 +60,10 @@ PREFIX=$(cfg prefix)
 EOD_CSV=$(cfg eod_csv)
 COMBINED_CSV=$(cfg combined_growth_csv)
 mapfile -t LABELS < <(cfg growth_labels)
+# consistent_growth_stocks spans month-scale windows only; day-scale windows
+# are published on their own rather than narrowing that table to "and also
+# rose this week".
+mapfile -t CONSISTENT_LABELS < <(cfg consistent_growth_labels)
 GROWTH_SCHEMA=$(cfg growth_schema_sql)
 INCLUDE_HISTORY=$(cfg include_price_history)
 
@@ -153,22 +157,27 @@ fi
 # ── 3. Build consistent growth table ──────────────────────────────────────────
 # Tickers that qualified in *every* configured window.
 log "==> [3] Building consistent_growth_stocks"
-BASE_TABLE="${PREFIX}_growth_${LABELS[0]}"
-INTERSECT_SQL="SELECT ticker FROM \"$BASE_TABLE\""
-for label in "${LABELS[@]:1}"; do
-    INTERSECT_SQL+=" INTERSECT SELECT ticker FROM \"${PREFIX}_growth_${label}\""
-done
+if [[ ${#CONSISTENT_LABELS[@]} -eq 0 ]]; then
+    sqlite3 "$TMP_DB" "DROP TABLE IF EXISTS consistent_growth_stocks;"
+    log "  Skipping: no month-scale windows are configured"
+else
+    BASE_TABLE="${PREFIX}_growth_${CONSISTENT_LABELS[0]}"
+    INTERSECT_SQL="SELECT ticker FROM \"$BASE_TABLE\""
+    for label in "${CONSISTENT_LABELS[@]:1}"; do
+        INTERSECT_SQL+=" INTERSECT SELECT ticker FROM \"${PREFIX}_growth_${label}\""
+    done
 
-sqlite3 "$TMP_DB" <<SQL
+    sqlite3 "$TMP_DB" <<SQL
 DROP TABLE IF EXISTS consistent_growth_stocks;
 CREATE TABLE consistent_growth_stocks AS
   SELECT ticker, name, exchange, pct_change AS pct_change_shortest_window,
          data_as_of, run_id
-  FROM "${PREFIX}_growth_${LABELS[-1]}"
+  FROM "${PREFIX}_growth_${CONSISTENT_LABELS[-1]}"
   WHERE ticker IN ($INTERSECT_SQL)
   ORDER BY ticker;
 SQL
-log "  consistent_growth_stocks: $(sqlite3 "$TMP_DB" 'SELECT COUNT(*) FROM consistent_growth_stocks;') rows"
+    log "  consistent_growth_stocks: $(sqlite3 "$TMP_DB" 'SELECT COUNT(*) FROM consistent_growth_stocks;') rows (windows: ${CONSISTENT_LABELS[*]})"
+fi
 
 # sqlite-utils leaves a large freelist behind after bulk inserts -- about half
 # the file. Reclaim it before publishing; this takes well under a second.

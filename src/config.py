@@ -193,6 +193,17 @@ class StockConfig:
         return [str(w["label"]) for w in self.analysis.windows]
 
     @property
+    def consistent_growth_labels(self) -> list[str]:
+        """Windows that feed ``consistent_growth_stocks``: month-based only.
+
+        That table means "grew consistently across timeframes". Including a
+        day-scale window would silently narrow it to "and also rose this
+        week", which is a different, much more selective signal; the short
+        window is published as its own table instead.
+        """
+        return [str(w["label"]) for w in self.analysis.windows if "months" in w]
+
+    @property
     def combined_growth_csv(self) -> str:
         """Price history for every ticker that grew in any window."""
         return self._growth_path("_growth")
@@ -463,7 +474,8 @@ def _main() -> None:
             "Usage: config.py <EXCHANGE> <INSTRUMENT_TYPE> <KEY>\n"
             "  KEY: ticker_file | data_dir | db_path | eod_csv |\n"
             "       combined_growth_csv | growth_labels | prefix |\n"
-            "       growth_schema_sql | include_price_history",
+            "       growth_schema_sql | include_price_history |\n"
+            "       consistent_growth_labels",
             file=sys.stderr,
         )
         sys.exit(2)
@@ -478,6 +490,10 @@ def _main() -> None:
 
     if key == "growth_schema_sql":
         print(growth_schema_sql())
+        return
+
+    if key == "consistent_growth_labels":
+        print("\n".join(cfg.consistent_growth_labels))
         return
 
     if key == "include_price_history":
