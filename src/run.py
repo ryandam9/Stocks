@@ -126,6 +126,16 @@ def main(
                 raise RuntimeError("--upload given but S3_BUCKET is not set")
             target = pipeline.upload_to_s3(cfg.db_path, bucket, os.environ.get("S3_REGION"))
             logger.info(f"Uploaded to {target}")
+        else:
+            # Say so out loud. Silence here is indistinguishable from an upload
+            # that ran and failed quietly, which is exactly the wrong ambiguity
+            # to leave in a container log.
+            reason = (
+                "S3_AUTO_UPLOAD is not set"
+                if os.environ.get("S3_BUCKET")
+                else "S3_BUCKET is not set"
+            )
+            logger.info(f"Skipping S3 upload ({reason}; pass --upload to force)")
 
     except StaleDataError as exc:
         logger.error(str(exc))

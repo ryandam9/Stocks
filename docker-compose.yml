@@ -5,6 +5,31 @@
 #   docker compose run --rm asx fetch
 #   docker compose run --rm us analyze --allow-stale
 #   docker compose run --rm sqlite       # open a shell on the published data
+#
+# S3 publication: S3_BUCKET/S3_REGION/S3_AUTO_UPLOAD are interpolated from the
+# .env file in this directory. Credentials are passed through from the calling
+# shell, because the container runs as uid 10001 and cannot read the host's
+# 0600 ~/.aws/credentials. Populate them for the current shell with:
+#
+#   eval "$(aws configure export-credentials --format env)"
+#
+# Listing AWS_* by name only (no "=") means Compose omits each one when it is
+# unset on the host rather than passing an empty string, which would otherwise
+# short-circuit botocore's credential chain. On ECS the task role supplies
+# credentials and none of these need to be set.
+
+x-stocks-environment: &stocks-environment
+  # STOCKS_DATA_ROOT is baked into the image as /data; override only to
+  # relocate within the container.
+  - TZ=UTC
+  - S3_BUCKET=${S3_BUCKET:-}
+  - S3_REGION=${S3_REGION:-}
+  - S3_AUTO_UPLOAD=${S3_AUTO_UPLOAD:-}
+  - AWS_ACCESS_KEY_ID
+  - AWS_SECRET_ACCESS_KEY
+  - AWS_SESSION_TOKEN
+  - AWS_PROFILE
+  - AWS_REGION
 
 services:
   us:
@@ -12,10 +37,7 @@ services:
     image: stocks:dev
     volumes:
       - stocks-data:/data
-    environment:
-      # STOCKS_DATA_ROOT is baked into the image as /data; override only to
-      # relocate within the container.
-      TZ: UTC
+    environment: *stocks-environment
     command: ["all", "--exchange", "US", "--instrument-type", "stocks", "--period", "365"]
 
   asx:
@@ -23,8 +45,7 @@ services:
     image: stocks:dev
     volumes:
       - stocks-data:/data
-    environment:
-      TZ: UTC
+    environment: *stocks-environment
     command: ["all", "--exchange", "ASX", "--instrument-type", "etf", "--period", "365"]
 
   # Inspect published results without installing sqlite on the host.
@@ -38,3 +59,7 @@ services:
 
 volumes:
   stocks-data:
+    # Pinned. Without an explicit name Compose creates a project-prefixed
+    # volume (stocks_stocks-data), so a plain `docker run -v stocks-data:/data`
+    # and `docker compose run` would silently use two different data sets.
+    name: stocks-data
