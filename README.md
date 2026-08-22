@@ -269,6 +269,31 @@ volume instead of failing, and the run silently operates on empty data.
 **Rebuild after editing source.** `COPY src/ ./src/` bakes the code into the
 image. A stale image gives no warning — it just runs the old code.
 
+### Copying the databases out of the volume
+
+Container runs publish to the `stocks-data` volume, whose host path
+(`/var/lib/docker/volumes/stocks-data/_data`) needs root to read. Copy the
+files out through a container instead — either form works:
+
+```bash
+# compose
+docker compose --profile tools run --rm --user "$(id -u):$(id -g)" \
+  -v "$PWD":/out sqlite -c 'cp /data/*.db /out/'
+
+# plain docker
+docker run --rm --user "$(id -u):$(id -g)" \
+  -v stocks-data:/data -v "$PWD":/out --entrypoint sh stocks:dev \
+  -c 'cp /data/*.db /out/'
+```
+
+`--user` is not optional. The image runs as uid 10001, so without it the copy
+fails with `Permission denied` on any directory you own. The volume's files are
+mode 644, so reading them as your own uid is fine.
+
+Add `-p` to `cp` to keep the original modification times, which record when the
+run happened; busybox `cp` in the sqlite image then warns that it cannot
+preserve ownership, which is harmless.
+
 **Universe seeding.** The committed universes ship inside the image and are
 copied to `/data/universe/` on first run. `sync` and `enrich` then rewrite the
 copy on the volume, never the image layer, so membership survives across
