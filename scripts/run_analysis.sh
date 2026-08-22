@@ -70,7 +70,7 @@ fi
 for tool in sqlite3 sqlite-utils; do
     command -v "$tool" >/dev/null 2>&1 || {
         echo "Error: required tool '$tool' not found on PATH" >&2
-        exw do you want me to implement?it 1
+        exit 1
     }
 done
 
@@ -103,7 +103,9 @@ load_table() {
     if [[ $rows -le 0 ]]; then
         local header cols
         IFS= read -r header <"$csv"
-        cols=$(echo "$header" | sed 's/[^,]*/"&" TEXT/g')
+        # Quote each header field and type it as TEXT for the empty table.
+        # shellcheck disable=SC2001  # per-field substitution needs sed
+        cols=$(printf '%s' "$header" | sed 's/[^,]*/"&" TEXT/g')
         sqlite3 "$TMP_DB" "DROP TABLE IF EXISTS \"$table\"; CREATE TABLE \"$table\" ($cols);"
         log "  Loaded 0 rows -> $table (empty, schema preserved)"
         return 0
