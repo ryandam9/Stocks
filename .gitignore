@@ -26,3 +26,12 @@ data/
 # Test / tooling caches
 .pytest_cache/
 .ruff_cache/
+
+# Terraform. tfvars carries the account ID, bucket name and alert address;
+# state files embed resolved ARNs. Neither belongs in a public repository.
+*.tfvars
+*.tfvars.json
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
