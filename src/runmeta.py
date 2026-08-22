@@ -63,6 +63,9 @@ class RunManifest:
     universe_total: int | None = None
     universe_screened: int | None = None
     provider: str = "yahoo_finance"
+    # Lineage: which fetch run produced the price file this stage consumed.
+    source_run_id: str | None = None
+    source_status: str | None = None
     thresholds: dict[str, Any] = field(default_factory=dict)
     counts: dict[str, Any] = field(default_factory=dict)
     outputs: dict[str, Any] = field(default_factory=dict)

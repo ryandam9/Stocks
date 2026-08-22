@@ -307,6 +307,13 @@ def test_analysis_links_back_to_the_fetch_run(tmp_path, monkeypatch):
     assert manifest.source_run_id == "fetch-123"
     assert manifest.source_status == "success"
 
+    # Assert the *persisted* manifest, not just the in-memory object: an
+    # undeclared dataclass attribute can be set and still be dropped by
+    # asdict() on write, which is exactly what happened.
+    written = json.load(open(os.path.join(cfg.data_dir, f"{cfg.prefix}_analysis_manifest.json")))
+    assert written["source_run_id"] == "fetch-123"
+    assert written["source_status"] == "success"
+
 
 # ------------------------------------------------------------------ R2-006
 
@@ -533,3 +540,84 @@ def test_asx_stocks_is_absent_and_fails_clearly():
     """
     with pytest.raises(FileNotFoundError, match="asx_stocks_config.yaml"):
         load_config("ASX", "stocks")
+
+
+# ------------------------------------------------------------------ universe pruning
+
+
+def _stub_provider(monkeypatch, resolvable, rate_limited=()):
+    """Stub yfinance metadata lookups for refresh_universe."""
+    import yfinance as yf
+    from yfinance.exceptions import YFRateLimitError
+
+    class Handle:
+        def __init__(self, symbol):
+            self.symbol = symbol
+
+        @property
+        def history_metadata(self):
+            if self.symbol in rate_limited:
+                # YFRateLimitError takes no constructor arguments.
+                raise YFRateLimitError()
+            if self.symbol in resolvable:
+                return {"fullExchangeName": "ASX", "instrumentType": "ETF"}
+            raise Exception("no data")
+
+    monkeypatch.setattr(yf, "Ticker", Handle)
+    # The retry path sleeps between attempts; tests must not wait for it.
+    monkeypatch.setattr("universe.time.sleep", lambda _seconds: None)
+
+
+def test_prune_removes_delisted_instruments(tmp_path, monkeypatch):
+    """Dead tickers drag every later fetch below the publication threshold.
+
+    Proportions mirror the real ASX case: a small minority of the universe is
+    delisted, well under the mass-deletion safety limit.
+    """
+    from universe import refresh_universe
+
+    alive = [f"A{i}" for i in range(18)]
+    dead = ["DEAD1", "DEAD2"]
+    path = tmp_path / "u.csv"
+    path.write_text("".join(f"{t}~{t} Fund\n" for t in alive + dead))
+    _stub_provider(monkeypatch, resolvable=set(alive))
+
+    df = refresh_universe(str(path), "", default_asset_type="etf", prune=True)
+    assert set(df["ticker"]) == set(alive)
+    assert set(load_universe(str(path))["ticker"]) == set(alive)
+
+
+def test_prune_is_skipped_when_lookups_were_throttled(tmp_path, monkeypatch):
+    """A throttled lookup is indistinguishable from a delisting."""
+    from universe import refresh_universe
+
+    path = tmp_path / "u.csv"
+    alive = [f"A{i}" for i in range(18)]
+    path.write_text("".join(f"{t}~{t} Fund\n" for t in [*alive, "MAYBE"]))
+    _stub_provider(monkeypatch, resolvable=set(alive), rate_limited={"MAYBE"})
+
+    df = refresh_universe(str(path), "", default_asset_type="etf", prune=True)
+    assert "MAYBE" in set(df["ticker"]), "must not prune while throttled"
+
+
+def test_prune_refuses_a_mass_deletion(tmp_path, monkeypatch):
+    """A provider outage must not empty the universe."""
+    from universe import refresh_universe
+
+    path = tmp_path / "u.csv"
+    path.write_text("".join(f"T{i}~Fund {i}\n" for i in range(10)))
+    _stub_provider(monkeypatch, resolvable={"T0"})  # 9 of 10 look dead
+
+    df = refresh_universe(str(path), "", default_asset_type="etf", prune=True)
+    assert len(df) == 10, "above the safety limit, nothing may be pruned"
+
+
+def test_enrich_without_prune_keeps_everything(tmp_path, monkeypatch):
+    from universe import refresh_universe
+
+    path = tmp_path / "u.csv"
+    path.write_text("ALIVE~Alive Fund\nDEAD~Dead Fund\n")
+    _stub_provider(monkeypatch, resolvable={"ALIVE"})
+
+    df = refresh_universe(str(path), "", default_asset_type="etf")
+    assert set(df["ticker"]) == {"ALIVE", "DEAD"}

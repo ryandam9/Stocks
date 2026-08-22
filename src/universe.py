@@ -30,6 +30,10 @@ UNIVERSE_COLUMNS = ["ticker", "name", "exchange", "asset_type", "currency", "sou
 # as though the security had no exchange.
 RATE_LIMIT_ATTEMPTS = 4
 
+# Refuse to prune more than this share of a universe in one run. A provider
+# outage would otherwise look like a mass delisting and empty the file.
+MAX_PRUNE_SHARE = 0.30
+
 # Instrument categories. Only common_stock and etf represent ordinary equity
 # exposure; the rest are derivatives or hybrid securities that should not sit
 # in a screen labelled "stocks".
@@ -281,6 +285,7 @@ def refresh_universe(
     default_asset_type: str = COMMON_STOCK,
     batch_size: int = 50,
     max_workers: int = 4,
+    prune: bool = False,
     progress=None,
 ) -> pd.DataFrame:
     """Enrich a universe file with provider exchange and instrument metadata.
@@ -291,6 +296,11 @@ def refresh_universe(
 
     The provider reports warrants and units as plain EQUITY, so the name-based
     classification wins whenever it identifies a non-common security.
+
+    Args:
+        prune: Also drop instruments the provider has no metadata for. Only
+            applied when nothing was rate limited, since a throttled lookup is
+            indistinguishable from a delisted one.
     """
     import datetime
 
@@ -393,6 +403,32 @@ def refresh_universe(
     df["exchange"] = df.apply(_exchange, axis=1)
     df["asset_type"] = df.apply(_asset_type, axis=1)
     df["source_date"] = today
+
+    if prune:
+        # A ticker the provider has no metadata for, on a run that was not
+        # throttled, is delisted rather than merely unresolved. Leaving those
+        # in the universe makes every later fetch look incomplete: they are
+        # counted as requested, always fail, and drag the success ratio below
+        # the publication threshold forever.
+        if throttled:
+            print(
+                f"  Not pruning: {len(throttled)} lookups were rate limited, so a "
+                f"failure cannot be distinguished from a dead listing. Re-run later.",
+                flush=True,
+            )
+        else:
+            dead = [t for t in needs_lookup if t not in resolved_exchange]
+            share = len(dead) / max(1, len(df))
+            if share > MAX_PRUNE_SHARE:
+                print(
+                    f"  Not pruning: {len(dead)} of {len(df)} instruments "
+                    f"({share:.0%}) look dead, above the {MAX_PRUNE_SHARE:.0%} "
+                    f"safety limit. That usually means a provider outage.",
+                    flush=True,
+                )
+            elif dead:
+                df = df[~df["ticker"].isin(dead)].reset_index(drop=True)
+                print(f"  Pruned {len(dead)} delisted instrument(s)", flush=True)
     df["currency"] = df["currency"].replace("", pd.NA).fillna("")
 
     write_universe(df, path)
@@ -413,17 +449,21 @@ def _main() -> None:
     from config import EXCHANGE_SUFFIXES, load_config
 
     usage = (
-        "Usage: universe.py <sync|enrich> <EXCHANGE> <INSTRUMENT_TYPE>\n"
+        "Usage: universe.py <sync|enrich> <EXCHANGE> <INSTRUMENT_TYPE> [--prune]\n"
         "  sync    replace membership and metadata from the authoritative\n"
         "          exchange symbol directory (US listings only)\n"
         "  enrich  fill metadata for the tickers already in the file, using\n"
-        "          provider lookups (works for any market)"
+        "          provider lookups (works for any market)\n"
+        "  --prune with enrich, also drop instruments the provider no longer\n"
+        "          lists, so delisted tickers stop failing every fetch"
     )
-    if len(sys.argv) != 4 or sys.argv[1] not in {"sync", "enrich"}:
+    args = [a for a in sys.argv[1:] if a != "--prune"]
+    prune = "--prune" in sys.argv
+    if len(args) != 3 or args[0] not in {"sync", "enrich"}:
         print(usage, file=sys.stderr)
         sys.exit(2)
 
-    command, exchange, instrument_type = sys.argv[1:4]
+    command, exchange, instrument_type = args
     cfg = load_config(exchange, instrument_type)
     default_type = default_asset_type_for(cfg.instrument_type)
 
@@ -472,6 +512,7 @@ def _main() -> None:
             cfg.ticker_file,
             EXCHANGE_SUFFIXES[cfg.exchange],
             default_asset_type=default_type,
+            prune=prune,
             progress=show,
         )
 
