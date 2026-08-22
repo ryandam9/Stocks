@@ -1,8 +1,9 @@
-# Stocks Data Fetcher
+# Stock Growth Screener
 
-Fetches historical end-of-day market data from Yahoo Finance, identifies
-tickers that grew materially over trailing windows, and loads the results into
-SQLite.
+Screens US common stock and ASX ETFs for sustained growth. Keeps each
+instrument universe current against its exchange, fetches a year of end-of-day
+prices from Yahoo Finance, measures returns over five trailing windows, and
+publishes the results as SQLite databases.
 
 Each run is a self-contained, self-identifying snapshot: it publishes a
 complete set of outputs, stamps every row with a `run_id` and `data_as_of`
