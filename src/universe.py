@@ -19,11 +19,16 @@ legacy file in place using the data provider's own metadata.
 import os
 import re
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pandas as pd
 
 UNIVERSE_COLUMNS = ["ticker", "name", "exchange", "asset_type", "currency", "source_date"]
+
+# Yahoo throttles metadata lookups; back off rather than recording the failure
+# as though the security had no exchange.
+RATE_LIMIT_ATTEMPTS = 4
 
 # Instrument categories. Only common_stock and etf represent ordinary equity
 # exposure; the rest are derivatives or hybrid securities that should not sit
@@ -92,15 +97,31 @@ _EXCHANGE_ALIASES = {
 }
 
 
+def _canonical(label: str) -> str:
+    """Strip case, spaces and punctuation for alias matching."""
+    return re.sub(r"[^A-Z0-9]", "", label.upper())
+
+
 def normalise_exchange(raw: str | None) -> str:
-    """Map a provider exchange label to a Google-Finance-compatible code."""
+    """Map a provider exchange label to a Google-Finance-compatible code.
+
+    Matching ignores case, spaces and punctuation: the provider returns the
+    same venue as both "NYSEAmerican" and "NYSE AMERICAN", and Google Finance
+    accepts only the unspaced form.
+    """
     if not raw or (isinstance(raw, float) and pd.isna(raw)):
         return EXCHANGE_UNKNOWN
     raw = str(raw).strip()
+    if not raw:
+        return EXCHANGE_UNKNOWN
     if raw in _EXCHANGE_ALIASES:
         return _EXCHANGE_ALIASES[raw]
-    upper = raw.upper()
-    return _EXCHANGE_ALIASES.get(upper, upper or EXCHANGE_UNKNOWN)
+
+    key = _canonical(raw)
+    for alias, code in _EXCHANGE_ALIASES.items():
+        if _canonical(alias) == key:
+            return code
+    return key or EXCHANGE_UNKNOWN
 
 
 def infer_asset_type(name: str, default: str = COMMON_STOCK) -> str:
@@ -191,7 +212,7 @@ def refresh_universe(
     exchange_suffix: str,
     default_asset_type: str = COMMON_STOCK,
     batch_size: int = 50,
-    max_workers: int = 8,
+    max_workers: int = 4,
     progress=None,
 ) -> pd.DataFrame:
     """Enrich a universe file with provider exchange and instrument metadata.
@@ -206,6 +227,7 @@ def refresh_universe(
     import datetime
 
     import yfinance as yf
+    from yfinance.exceptions import YFRateLimitError
 
     df = load_universe(path, default_asset_type=default_asset_type)
     today = datetime.date.today().isoformat()
@@ -221,16 +243,36 @@ def refresh_universe(
     ]
 
     resolved_exchange, resolved_type = {}, {}
+    throttled: list = []
     lock = threading.Lock()
     done = 0
 
-    def resolve(ticker: str) -> None:
+    def resolve(ticker: str) -> bool:
+        """Resolve one ticker. Returns False if the lookup itself failed.
+
+        A failed lookup is not the same as a security with no exchange: if
+        rate limiting were recorded as "unknown", a throttled run would
+        quietly erase metadata for half the universe.
+        """
         nonlocal done
         symbol = f"{ticker}.{exchange_suffix}" if exchange_suffix else ticker
-        try:
-            metadata = yf.Ticker(symbol).history_metadata or {}
-        except Exception:
-            metadata = {}
+        delay = 2.0
+        ok = True
+        metadata = {}
+        for attempt in range(RATE_LIMIT_ATTEMPTS):
+            try:
+                metadata = yf.Ticker(symbol).history_metadata or {}
+                ok = True
+                break
+            except YFRateLimitError:
+                ok = False
+                if attempt < RATE_LIMIT_ATTEMPTS - 1:
+                    time.sleep(delay)
+                    delay *= 2
+            except Exception:
+                # The provider genuinely has nothing for this symbol.
+                metadata, ok = {}, True
+                break
 
         exchange = metadata.get("fullExchangeName") or metadata.get("exchangeName")
         instrument = metadata.get("instrumentType")
@@ -239,19 +281,33 @@ def refresh_universe(
                 resolved_exchange[ticker] = normalise_exchange(exchange)
             if instrument:
                 resolved_type[ticker] = _PROVIDER_TYPES.get(str(instrument).upper(), UNKNOWN)
+            if not ok:
+                throttled.append(ticker)
             done += 1
             if progress and done % batch_size == 0:
                 progress(done, len(needs_lookup))
+        return ok
 
-    # Modest concurrency: the provider was not seen to throttle these
-    # lookups, but there is no reason to lean on it.
+    # Keep concurrency low: Yahoo throttles these lookups aggressively, and a
+    # throttled run yields no metadata at all.
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         list(pool.map(resolve, needs_lookup))
     if progress:
         progress(len(needs_lookup), len(needs_lookup))
 
+    if throttled:
+        print(
+            f"  WARNING: {len(throttled)} lookups were rate limited and could not "
+            f"be resolved. Existing values for those tickers are preserved; "
+            f"re-run later to fill them in.",
+            flush=True,
+        )
+
     def _exchange(row):
-        return resolved_exchange.get(row["ticker"], row["exchange"] or EXCHANGE_UNKNOWN)
+        # Fall back to whatever the file already held, so a throttled or
+        # partial run never erases metadata resolved by an earlier one.
+        existing = (row["exchange"] or "").strip() or EXCHANGE_UNKNOWN
+        return resolved_exchange.get(row["ticker"], existing)
 
     def _asset_type(row):
         # Name-based classification wins: the provider labels warrants and
