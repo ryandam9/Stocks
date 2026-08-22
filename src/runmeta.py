@@ -80,6 +80,28 @@ class RunManifest:
         return path
 
 
+def _temp_path(directory: str, path: str) -> str:
+    """A temp filename unique to this process and call.
+
+    A fixed ``.<name>.tmp`` lets two concurrent runs writing the same output
+    remove or overwrite each other's partial file, so the rename is no longer
+    atomic with respect to the other run.
+    """
+    unique = f"{os.getpid()}.{uuid.uuid4().hex[:8]}"
+    return os.path.join(directory, f".{os.path.basename(path)}.{unique}.tmp")
+
+
+def read_manifest(path: str) -> dict | None:
+    """Load a manifest, returning None when it is absent or unreadable."""
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path) as handle:
+            return json.load(handle)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
 def atomic_write_text(text: str, path: str) -> str:
     """Write text via a temporary file and rename into place.
 
@@ -89,7 +111,7 @@ def atomic_write_text(text: str, path: str) -> str:
     """
     directory = os.path.dirname(os.path.abspath(path))
     os.makedirs(directory, exist_ok=True)
-    temp_path = os.path.join(directory, f".{os.path.basename(path)}.tmp")
+    temp_path = _temp_path(directory, path)
     with open(temp_path, "w") as handle:
         handle.write(text)
         handle.flush()
@@ -102,7 +124,7 @@ def atomic_write_csv(df: pd.DataFrame, path: str) -> str:
     """Write a DataFrame to CSV atomically, preserving the header when empty."""
     directory = os.path.dirname(os.path.abspath(path))
     os.makedirs(directory, exist_ok=True)
-    temp_path = os.path.join(directory, f".{os.path.basename(path)}.tmp")
+    temp_path = _temp_path(directory, path)
     df.to_csv(temp_path, index=False)
     os.replace(temp_path, path)
     return path

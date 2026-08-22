@@ -19,9 +19,27 @@ import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from config import EXCHANGE_SUFFIXES, INSTRUMENTS, PROJECT_ROOT, AnalysisSettings, load_config
-from runmeta import RunManifest, atomic_write_csv, code_revision, new_run_id
-from universe import EXCHANGE_UNKNOWN, filter_universe, load_universe
+from config import (
+    EXCHANGE_SUFFIXES,
+    GROWTH_COLUMNS,
+    INSTRUMENTS,
+    PROJECT_ROOT,
+    AnalysisSettings,
+    load_config,
+)
+from runmeta import (
+    RunManifest,
+    atomic_write_csv,
+    code_revision,
+    new_run_id,
+    read_manifest,
+)
+from universe import (
+    EXCHANGE_UNKNOWN,
+    default_asset_type_for,
+    filter_universe,
+    load_universe,
+)
 
 # Maps analysis window length (months) to the Google Finance chart parameter.
 GF_WINDOW = {12: "1Y", 6: "6M", 3: "3M", 1: "1M"}
@@ -40,28 +58,6 @@ BASIS_RAW_FALLBACK = "raw_fallback"
 BASIS_UNKNOWN = "unknown"
 SCREENABLE_BASES = (BASIS_ADJUSTED, BASIS_UNKNOWN)
 
-# Columns every growth CSV carries, empty or not. Fixed so that an empty
-# result is still a schema-valid file that SQLite can load.
-GROWTH_COLUMNS = [
-    "ticker",
-    "name",
-    "exchange",
-    "asset_type",
-    "first_date",
-    "first_price",
-    "last_date",
-    "latest_price",
-    "pct_change",
-    "observations",
-    "days_covered",
-    "coverage",
-    "observation_ratio",
-    "median_volume",
-    "price_basis",
-    "data_as_of",
-    "run_id",
-    "google_finance",
-]
 
 pd.set_option("display.max_columns", None)
 pd.set_option("display.max_rows", None)
@@ -152,6 +148,21 @@ def assert_data_is_fresh(
     return age_days
 
 
+def _worst_price_basis(values) -> str:
+    """Reduce a ticker's row-level bases to its weakest one.
+
+    Lexical ``min`` would return "adjusted" for a window mixing adjusted and
+    raw_fallback rows, letting partially unadjusted history pass as verified.
+    Quality must degrade to the worst row, not the alphabetically first.
+    """
+    seen = set(values)
+    if BASIS_RAW_FALLBACK in seen:
+        return BASIS_RAW_FALLBACK
+    if BASIS_UNKNOWN in seen:
+        return BASIS_UNKNOWN
+    return BASIS_ADJUSTED
+
+
 def _endpoint_prices(window_df: pd.DataFrame, n: int) -> pd.DataFrame:
     """Median price over the first and last ``n`` trading days per ticker."""
     grouped = window_df.groupby("ticker", sort=False)
@@ -180,7 +191,7 @@ def _window_stats(
         last_date=("stock_price_date", "max"),
         observations=("price", "size"),
         median_volume=("volume", "median"),
-        price_basis=("price_basis", "min"),
+        price_basis=("price_basis", _worst_price_basis),
     )
     stats = stats.join(_endpoint_prices(window_df, settings.endpoint_window))
 
@@ -401,6 +412,20 @@ def analyze_stocks(
 
     df = load_price_data(cfg.eod_csv)
     latest_date = df["stock_price_date"].max()
+
+    # Lineage: record which fetch produced the price file being screened, so a
+    # surprising screen can be traced back to its source dataset.
+    fetch_manifest = read_manifest(os.path.join(cfg.data_dir, f"{cfg.prefix}_fetch_manifest.json"))
+    if fetch_manifest:
+        manifest.source_run_id = fetch_manifest.get("run_id")
+        manifest.source_status = fetch_manifest.get("status")
+        if fetch_manifest.get("status") not in (None, "success"):
+            print(
+                f"Warning: the price file was produced by a fetch reported as "
+                f"'{fetch_manifest.get('status')}'; results may be incomplete."
+            )
+    elif "fetch_run_id" in df.columns and df["fetch_run_id"].notna().any():
+        manifest.source_run_id = str(df["fetch_run_id"].dropna().iloc[0])
     age_days = assert_data_is_fresh(latest_date, settings.max_data_age_days, allow_stale)
 
     manifest.data_as_of = latest_date.strftime("%Y-%m-%d")
@@ -408,7 +433,10 @@ def analyze_stocks(
     # Restrict to the requested instrument categories. Warrants, units and
     # preferred lines are not ordinary equity exposure and should not appear
     # in a screen labelled "stocks".
-    metadata = load_universe(cfg.ticker_file)
+    metadata = load_universe(
+        cfg.ticker_file,
+        default_asset_type=default_asset_type_for(cfg.instrument_type),
+    )
     manifest.universe_total = len(metadata)
     screened = filter_universe(metadata, settings.asset_types)
     manifest.universe_screened = len(screened)
@@ -466,8 +494,10 @@ def analyze_stocks(
         if not result.empty:
             print(result.to_string(index=False))
 
-        # Always publish, empty or not: a skipped write would leave the
-        # previous run's file to be loaded as this run's result.
+    # Publish only after every window has computed. Writing each file as it
+    # finished meant a failure part-way left some outputs from this run and
+    # the rest from the previous one, which a consumer cannot distinguish.
+    for label, result in results.items():
         output_path = _growth_output_path(cfg.eod_csv, f"_growth_{label}")
         atomic_write_csv(result, output_path)
         outputs[label] = {"path": output_path, "rows": len(result)}

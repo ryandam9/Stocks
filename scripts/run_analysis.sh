@@ -60,6 +60,7 @@ PREFIX=$(cfg prefix)
 EOD_CSV=$(cfg eod_csv)
 COMBINED_CSV=$(cfg combined_growth_csv)
 mapfile -t LABELS < <(cfg growth_labels)
+GROWTH_SCHEMA=$(cfg growth_schema_sql)
 
 if [[ ! -f "$EOD_CSV" ]]; then
     echo "Error: price data not found: $EOD_CSV" >&2
@@ -92,7 +93,7 @@ trap cleanup EXIT
 # Loads a CSV into a table, creating an empty typed-as-TEXT table when the CSV
 # has only a header. sqlite-utils cannot import a header-only file.
 load_table() {
-    local csv="$1" table="$2"
+    local csv="$1" table="$2" schema="${3:-}"
     if [[ ! -f "$csv" ]]; then
         log "  MISSING (expected): $(basename "$csv")"
         return 1
@@ -100,14 +101,27 @@ load_table() {
 
     local rows
     rows=$(($(wc -l <"$csv") - 1))
+
+    # Create the table with its declared schema first, then insert. Letting
+    # sqlite-utils infer types from the CSV gave the same logical table
+    # REAL/INTEGER columns on a normal run and all-TEXT columns on an empty
+    # one, which breaks type-sensitive consumers when a screen empties out.
+    if [[ -n "$schema" ]]; then
+        sqlite3 "$TMP_DB" \
+            "DROP TABLE IF EXISTS \"$table\"; CREATE TABLE \"$table\" ($schema);"
+    else
+        sqlite3 "$TMP_DB" "DROP TABLE IF EXISTS \"$table\";"
+    fi
+
     if [[ $rows -le 0 ]]; then
-        local header cols
-        IFS= read -r header <"$csv"
-        # Quote each header field and type it as TEXT for the empty table.
-        # shellcheck disable=SC2001  # per-field substitution needs sed
-        cols=$(printf '%s' "$header" | sed 's/[^,]*/"&" TEXT/g')
-        sqlite3 "$TMP_DB" "DROP TABLE IF EXISTS \"$table\"; CREATE TABLE \"$table\" ($cols);"
-        log "  Loaded 0 rows -> $table (empty, schema preserved)"
+        if [[ -z "$schema" ]]; then
+            local header cols
+            IFS= read -r header <"$csv"
+            # shellcheck disable=SC2001  # per-field substitution needs sed
+            cols=$(printf '%s' "$header" | sed 's/[^,]*/"&" TEXT/g')
+            sqlite3 "$TMP_DB" "CREATE TABLE \"$table\" ($cols);"
+        fi
+        log "  Loaded 0 rows -> $table (empty, declared schema)"
         return 0
     fi
 
@@ -118,7 +132,8 @@ load_table() {
 
 ALL_LOADED=true
 for label in "${LABELS[@]}"; do
-    load_table "${EOD_CSV%.csv}_growth_${label}.csv" "${PREFIX}_growth_${label}" || ALL_LOADED=false
+    load_table "${EOD_CSV%.csv}_growth_${label}.csv" "${PREFIX}_growth_${label}" \
+        "$GROWTH_SCHEMA" || ALL_LOADED=false
 done
 load_table "$COMBINED_CSV" "${PREFIX}_growth" || ALL_LOADED=false
 

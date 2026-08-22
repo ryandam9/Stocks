@@ -202,9 +202,77 @@ def load_universe(path: str, default_asset_type: str = COMMON_STOCK) -> pd.DataF
 
 
 def filter_universe(df: pd.DataFrame, asset_types) -> pd.DataFrame:
-    """Keep only the requested asset types."""
+    """Keep only the requested asset types.
+
+    ``unknown`` is never implicitly included: an instrument whose class could
+    not be established is excluded unless the caller asks for it by name, so a
+    derivative can never enter a screen by defaulting into common stock.
+    """
     wanted = {str(t).lower() for t in asset_types}
     return df[df["asset_type"].str.lower().isin(wanted)].reset_index(drop=True)
+
+
+def default_asset_type_for(instrument_type: str) -> str:
+    """The asset type a universe of ``instrument_type`` holds by default.
+
+    Callers must pass this to :func:`load_universe`; without it a legacy
+    ``TICKER~Name`` ETF file loads as common stock and is then filtered away
+    entirely by an ETF config.
+    """
+    return ETF if str(instrument_type).lower() == "etf" else COMMON_STOCK
+
+
+def sync_universe(
+    path: str,
+    directory: pd.DataFrame,
+    instrument_type: str = "stocks",
+    exchanges: list | None = None,
+) -> dict:
+    """Replace universe membership and metadata from an authoritative source.
+
+    Unlike metadata enrichment, this adds newly listed symbols and drops ones
+    the source no longer lists, so ``source_date`` genuinely describes the
+    membership rather than the last time metadata was touched.
+
+    Args:
+        path: Universe file to rewrite.
+        directory: Authoritative rows (ticker, name, exchange, asset_type).
+        instrument_type: Used for the fallback asset type.
+        exchanges: Restrict membership to these exchange codes.
+
+    Returns:
+        Summary with added/removed/retained ticker counts.
+    """
+    import datetime
+
+    if directory.empty:
+        raise ValueError("Symbol directory is empty; refusing to wipe the universe")
+
+    incoming = directory.copy()
+    if exchanges:
+        wanted = {e.upper() for e in exchanges}
+        incoming = incoming[incoming["exchange"].str.upper().isin(wanted)]
+        if incoming.empty:
+            raise ValueError(f"No symbols in the directory match exchanges {sorted(wanted)}")
+
+    try:
+        existing = load_universe(path, default_asset_type=default_asset_type_for(instrument_type))
+        previous = set(existing["ticker"])
+    except (FileNotFoundError, ValueError):
+        previous = set()
+
+    current = set(incoming["ticker"])
+    today = datetime.date.today().isoformat()
+
+    incoming = incoming.assign(currency="USD", source_date=today)
+    write_universe(incoming[UNIVERSE_COLUMNS], path)
+
+    return {
+        "added": sorted(current - previous),
+        "removed": sorted(previous - current),
+        "retained": len(current & previous),
+        "total": len(current),
+    }
 
 
 def refresh_universe(
@@ -344,28 +412,69 @@ def _main() -> None:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from config import EXCHANGE_SUFFIXES, load_config
 
-    if len(sys.argv) != 4 or sys.argv[1] != "refresh":
-        print(
-            "Usage: universe.py refresh <EXCHANGE> <INSTRUMENT_TYPE>\n"
-            "  Enriches the configured universe file with provider metadata.",
-            file=sys.stderr,
-        )
+    usage = (
+        "Usage: universe.py <sync|enrich> <EXCHANGE> <INSTRUMENT_TYPE>\n"
+        "  sync    replace membership and metadata from the authoritative\n"
+        "          exchange symbol directory (US listings only)\n"
+        "  enrich  fill metadata for the tickers already in the file, using\n"
+        "          provider lookups (works for any market)"
+    )
+    if len(sys.argv) != 4 or sys.argv[1] not in {"sync", "enrich"}:
+        print(usage, file=sys.stderr)
         sys.exit(2)
 
-    _, _, exchange, instrument_type = sys.argv
+    command, exchange, instrument_type = sys.argv[1:4]
     cfg = load_config(exchange, instrument_type)
-    default_type = ETF if cfg.instrument_type == "etf" else COMMON_STOCK
+    default_type = default_asset_type_for(cfg.instrument_type)
 
-    def show(done, total):
-        print(f"  {done}/{total} resolved", flush=True)
+    if command == "sync":
+        from symbol_directory import US_EXCHANGES, fetch_symbol_directory
 
-    print(f"Refreshing {cfg.ticker_file}")
-    df = refresh_universe(
-        cfg.ticker_file,
-        EXCHANGE_SUFFIXES[cfg.exchange],
-        default_asset_type=default_type,
-        progress=show,
-    )
+        if cfg.exchange not in US_EXCHANGES:
+            print(
+                f"Error: 'sync' uses the US exchange symbol directory and does not "
+                f"cover {cfg.exchange}. Use 'enrich' instead.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        print(f"Downloading symbol directory for {cfg.exchange}...")
+        directory = fetch_symbol_directory()
+        summary = sync_universe(
+            cfg.ticker_file,
+            directory,
+            instrument_type=cfg.instrument_type,
+            exchanges=US_EXCHANGES[cfg.exchange],
+        )
+        print(
+            f"  {summary['total']} symbols "
+            f"(+{len(summary['added'])} added, -{len(summary['removed'])} removed, "
+            f"{summary['retained']} retained)"
+        )
+        if summary["added"]:
+            print(
+                f"  added:   {', '.join(summary['added'][:10])}"
+                + (" ..." if len(summary["added"]) > 10 else "")
+            )
+        if summary["removed"]:
+            print(
+                f"  removed: {', '.join(summary['removed'][:10])}"
+                + (" ..." if len(summary["removed"]) > 10 else "")
+            )
+        df = load_universe(cfg.ticker_file, default_asset_type=default_type)
+    else:
+
+        def show(done, total):
+            print(f"  {done}/{total} resolved", flush=True)
+
+        print(f"Enriching {cfg.ticker_file}")
+        df = refresh_universe(
+            cfg.ticker_file,
+            EXCHANGE_SUFFIXES[cfg.exchange],
+            default_asset_type=default_type,
+            progress=show,
+        )
+
     print("\nAsset types:")
     print(df["asset_type"].value_counts().to_string())
     print("\nExchanges:")

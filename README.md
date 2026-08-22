@@ -48,10 +48,13 @@ regardless of that variable.
 ## Usage
 
 ```bash
-# 1. Fetch prices (logs to logs/, rotated)
+# 1. Sync the instrument universe from the exchange symbol directory
+uv run src/universe.py sync NASDAQ stocks
+
+# 2. Fetch prices (logs to logs/, rotated)
 ./scripts/fetch_prices.sh NASDAQ stocks 365
 
-# 2. Analyse growth and load into SQLite
+# 3. Analyse growth and load into SQLite
 ./scripts/run_analysis.sh NASDAQ stocks
 
 # Optional: upload the DB to S3
@@ -65,7 +68,8 @@ Python entry points, for more control:
 uv run src/fetch_prices.py --exchange NASDAQ --instrument-type stocks \
     --period 365 --batch-size 100
 uv run src/analysis.py --exchange NASDAQ --instrument-type stocks
-uv run src/universe.py refresh NASDAQ stocks     # enrich the universe file
+uv run src/universe.py sync NASDAQ stocks       # membership + class, US directory
+uv run src/universe.py enrich ASX etf           # metadata only, any market
 ```
 
 ## How growth is measured
@@ -105,6 +109,21 @@ Every run prints an eligibility funnel, so an empty result is never ambiguous:
 | Liquid enough | `min_median_volume` | A percentage move in a name trading a few hundred shares a day is not realisable. |
 | Above price floor | `min_price` | Filters sub-dollar names whose percentages are noise. Denominated in the exchange's own currency, so it is set per config. |
 
+### Dataset completeness
+
+Screening is cross-sectional, so a run missing part of its universe can look
+entirely plausible while omitting most of the candidates. The fetch therefore
+refuses to publish unless `--min-success-ratio` (default 0.95) of requested
+tickers returned data:
+
+```
+Error: Only 2,800/5,000 tickers (56.0%) returned data, below the required
+95.0%. The previous price file has been left untouched.
+```
+
+The check runs *before* the old price file is overwritten, so a bad run leaves
+the last good dataset intact. `--allow-partial` overrides it.
+
 ### Data freshness
 
 Per-ticker staleness is measured against the dataset's own latest date, which
@@ -118,8 +137,30 @@ Re-run the fetch, or pass --allow-stale to screen it anyway.
 
 ## The instrument universe
 
-A universe file lists what to screen. The structured form carries real
-metadata:
+A universe file lists what to screen. For US listings it is built from the
+exchange's own symbol directory (`nasdaqlisted.txt` / `otherlisted.txt`), which
+is the only source that reliably distinguishes a SPAC's share classes — all
+three carry the same company name and the price provider reports every one of
+them as `EQUITY`:
+
+```
+AACB   Artius II Acquisition Inc. - Class A Ordinary Shares   common_stock
+AACBR  Artius II Acquisition Inc. - Rights                    right
+AACBU  Artius II Acquisition Inc. - Units                     unit
+```
+
+An instrument whose class cannot be established is recorded as `unknown` and
+**excluded** from screens unless `asset_types` names it explicitly, so a
+derivative can never enter a screen by defaulting into common stock.
+
+Two commands, deliberately distinct:
+
+| Command | Does |
+|---|---|
+| `universe.py sync <EX> <TYPE>` | Replaces membership *and* metadata from the US symbol directory, reporting adds/removes |
+| `universe.py enrich <EX> <TYPE>` | Fills metadata for tickers already in the file via provider lookups; works for any market |
+
+The structured form carries real metadata:
 
 ```csv
 ticker,name,exchange,asset_type,currency,source_date
@@ -180,13 +221,17 @@ unique and safe as filenames and SQLite identifiers.
 | `<prefix>_eod_growth_<label>.csv` | Qualifying tickers for one window, with diagnostics |
 | `<prefix>_eod_growth.csv` | Price history for every ticker that grew in any window, with `growth_count` and `growth_periods` |
 | `<prefix>_error.csv` | Tickers that returned no data, with error type |
-| `<prefix>_analysis_manifest.json` | Run provenance: run id, code revision, thresholds, funnel counts, `data_as_of` |
+| `<prefix>_fetch_manifest.json` | Fetch provenance: run id, requested/succeeded counts, success ratio, `data_as_of` |
+| `<prefix>_analysis_manifest.json` | Analysis provenance: run id, code revision, thresholds, funnel counts, and the `source_run_id` of the fetch that produced the price file |
 
 Every growth file is written on every run, empty-but-headed when nothing
 qualifies, so a later run can never leave an earlier run's results in place to
-be republished as current. CSVs are written to a temporary file and renamed
-into place; the SQLite database is built in full and then moved over the
-published one.
+be republished as current. Windows are published only after all of them have
+computed, so a failure part-way cannot produce a mixed-generation output set.
+CSVs are written to a process-unique temporary file and renamed into place; the
+SQLite database is built in full and then moved over the published one. Growth
+tables are created from a declared schema, so their column types do not change
+when a screen happens to be empty.
 
 SQLite tables mirror those CSVs, plus `consistent_growth_stocks` — tickers
 that qualified in **every** configured window.
@@ -194,7 +239,7 @@ that qualified in **every** configured window.
 ## Tests
 
 ```bash
-uv run pytest          # 58 tests, fully offline
+uv run pytest          # 121 tests, fully offline
 uv run ruff check src tests
 ```
 

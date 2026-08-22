@@ -9,6 +9,7 @@ Set ``STOCKS_DATA_ROOT`` to relocate all generated data (CSVs and SQLite DBs)
 outside the repository without editing any config file.
 """
 
+import math
 import os
 import re
 from dataclasses import dataclass, field
@@ -26,6 +27,55 @@ EXCHANGE_SUFFIXES = {
 }
 
 INSTRUMENTS = ["stocks", "etf"]
+
+# Declared schema of every per-window growth table. Kept here so the analysis
+# stage and the SQLite loader agree. FLOAT rather than REAL because that is the
+# spelling sqlite-utils emits, so an empty run and a populated run produce a
+# byte-identical schema (both have REAL affinity either way): creating the table from CSV inference gave
+# it FLOAT/INTEGER columns on a normal run and all-TEXT columns on an empty
+# one, so the same logical table changed type between runs.
+GROWTH_COLUMN_TYPES = [
+    ("ticker", "TEXT"),
+    ("name", "TEXT"),
+    ("exchange", "TEXT"),
+    ("asset_type", "TEXT"),
+    ("first_date", "TEXT"),
+    ("first_price", "FLOAT"),
+    ("last_date", "TEXT"),
+    ("latest_price", "FLOAT"),
+    ("pct_change", "FLOAT"),
+    ("observations", "INTEGER"),
+    ("days_covered", "INTEGER"),
+    ("coverage", "FLOAT"),
+    ("observation_ratio", "FLOAT"),
+    ("median_volume", "FLOAT"),
+    ("price_basis", "TEXT"),
+    ("data_as_of", "TEXT"),
+    ("run_id", "TEXT"),
+    ("google_finance", "TEXT"),
+]
+
+GROWTH_COLUMNS = [name for name, _ in GROWTH_COLUMN_TYPES]
+
+
+def growth_schema_sql() -> str:
+    """Column definitions for a growth table, for CREATE TABLE."""
+    return ", ".join(f'"{name}" {sql_type}' for name, sql_type in GROWTH_COLUMN_TYPES)
+
+
+# Instrument categories a config may ask to screen. "unknown" is accepted so a
+# user can deliberately opt into instruments whose class could not be
+# established, but it is never included by default.
+VALID_ASSET_TYPES = {
+    "common_stock",
+    "etf",
+    "warrant",
+    "unit",
+    "right",
+    "preferred",
+    "note",
+    "unknown",
+}
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -133,24 +183,51 @@ def _require_range(
     if key not in section:
         return
     value = float(section[key])
+    if not math.isfinite(value):
+        raise ValueError(f"{path}: {key} must be a finite number, got {section[key]}")
     too_low = value <= low if exclusive_min else value < low
     if too_low or value > high:
         bound = "(" if exclusive_min else "["
         raise ValueError(f"{path}: {key} must be in {bound}{low}, {high}], got {value}")
 
 
+def _require_whole_number(raw, key: str, path: str) -> None:
+    """Reject a fractional value where an integer is required.
+
+    ``int(1.9)`` silently truncates to 1, changing behaviour with no indication
+    that the configured value was not the one used.
+    """
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        raise ValueError(f"{path}: {key} must be a number, got {raw!r}") from None
+    if not math.isfinite(value) or value != int(value):
+        raise ValueError(
+            f"{path}: {key} must be a whole number, got {raw!r} "
+            f"(a fractional value would be silently truncated)"
+        )
+
+
 def _require_positive(section: dict, key: str, path: str, integer: bool = False) -> None:
     if key not in section:
         return
-    value = int(section[key]) if integer else float(section[key])
+    raw = section[key]
+    if integer:
+        _require_whole_number(raw, key, path)
+    value = float(raw)
+    if not math.isfinite(value):
+        raise ValueError(f"{path}: {key} must be a finite number, got {raw}")
     if value < 1:
-        raise ValueError(f"{path}: {key} must be >= 1, got {section[key]}")
+        raise ValueError(f"{path}: {key} must be >= 1, got {raw}")
 
 
 def _require_non_negative(section: dict, key: str, path: str) -> None:
     if key not in section:
         return
-    if float(section[key]) < 0:
+    value = float(section[key])
+    if not math.isfinite(value):
+        raise ValueError(f"{path}: {key} must be a finite number, got {section[key]}")
+    if value < 0:
         raise ValueError(f"{path}: {key} must be >= 0, got {section[key]}")
 
 
@@ -224,6 +301,27 @@ def load_config(exchange: str, instrument_type: str) -> StockConfig:
     _require_non_negative(analysis_raw, "min_price", path)
     _require_non_negative(analysis_raw, "min_median_volume", path)
 
+    if "asset_types" in analysis_raw:
+        raw_types = analysis_raw["asset_types"]
+        # A bare string is iterable, so list() would silently turn
+        # "common_stock" into twelve single-character types and screen nothing.
+        if isinstance(raw_types, str) or not isinstance(raw_types, (list, tuple)):
+            raise ValueError(
+                f"{path}: asset_types must be a list, got {raw_types!r}. "
+                f"Write it as [{raw_types!r}] if you mean a single type."
+            )
+        unknown = {str(t) for t in raw_types} - VALID_ASSET_TYPES
+        if unknown:
+            raise ValueError(
+                f"{path}: unknown asset_type(s): {', '.join(sorted(unknown))}. "
+                f"Valid types: {', '.join(sorted(VALID_ASSET_TYPES))}"
+            )
+        if not raw_types:
+            raise ValueError(f"{path}: asset_types must not be empty")
+
+    for window in windows:
+        _require_whole_number(window["months"], f"window '{window['label']}' months", path)
+
     labels = [str(w["label"]) for w in windows]
     duplicates = {label for label in labels if labels.count(label) > 1}
     if duplicates:
@@ -276,7 +374,8 @@ def _main() -> None:
         print(
             "Usage: config.py <EXCHANGE> <INSTRUMENT_TYPE> <KEY>\n"
             "  KEY: ticker_file | data_dir | db_path | eod_csv |\n"
-            "       combined_growth_csv | growth_labels | prefix",
+            "       combined_growth_csv | growth_labels | prefix |\n"
+            "       growth_schema_sql",
             file=sys.stderr,
         )
         sys.exit(2)
@@ -287,6 +386,10 @@ def _main() -> None:
     except Exception as exc:  # surfaced verbatim to the shell caller
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
+
+    if key == "growth_schema_sql":
+        print(growth_schema_sql())
+        return
 
     if not hasattr(cfg, key) or key.startswith("_"):
         print(f"Error: unknown config key '{key}'", file=sys.stderr)

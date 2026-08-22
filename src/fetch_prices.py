@@ -10,11 +10,13 @@ import functools
 import logging
 import logging.handlers
 import os
+import re
 import sys
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Sequence
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import click
 import pandas as pd
@@ -23,9 +25,15 @@ from yfinance.exceptions import YFException, YFRateLimitError
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from config import EXCHANGE_SUFFIXES, INSTRUMENTS, StockConfig, load_config
-from runmeta import atomic_write_csv, new_run_id
-from universe import filter_universe, load_universe
+from config import (
+    EXCHANGE_SUFFIXES,
+    INSTRUMENTS,
+    PROJECT_ROOT,
+    StockConfig,
+    load_config,
+)
+from runmeta import RunManifest, atomic_write_csv, code_revision, new_run_id
+from universe import default_asset_type_for, filter_universe, load_universe
 
 pd.set_option("display.max_columns", None)
 pd.set_option("display.width", 1000)
@@ -45,17 +53,39 @@ TRANSIENT_ERRORS = (
     OSError,  # covers socket errors and most requests/urllib3 transport failures
 )
 
-# Provider-side faults a batch can legitimately recover from. Anything else
-# (a pandas/yfinance response-shape change, a bug in normalisation) is a defect
-# and must fail the run rather than be recorded as "these tickers failed".
-RECOVERABLE_ERRORS = TRANSIENT_ERRORS + (YFException, ValueError, KeyError)
+# Provider-side faults a batch can legitimately recover from. Deliberately
+# excludes bare ValueError and KeyError: those are raised throughout pandas and
+# this codebase, so treating them as recoverable turns a response-shape change
+# or a normalisation bug into "these tickers failed" and publishes a partial
+# dataset that hides the defect.
+RECOVERABLE_ERRORS = TRANSIENT_ERRORS + (YFException,)
 
 PRICE_COLUMNS = ["Open", "High", "Low", "Close", "Adj Close"]
+
+# Characters the exchange directory uses to separate a share class or preferred
+# series from the root symbol. Yahoo Finance uses a hyphen for all of them.
+_SHARE_CLASS_SEPARATORS = re.compile(r"[./$]")
+
+# Local timezone of each exchange, used to decide which calendar date the
+# market is currently on. A host in Australia fetching NASDAQ is already a day
+# ahead, so a host-local boundary would request a session that has not started.
+EXCHANGE_TIMEZONES = {
+    "NASDAQ": "America/New_York",
+    "NYSE": "America/New_York",
+    "ASX": "Australia/Sydney",
+    "NSE": "Asia/Kolkata",
+    "BSE": "Asia/Kolkata",
+}
 
 # Recorded per row so downstream code can tell verified adjusted prices from a
 # raw-close fallback. Screening treats the two differently.
 BASIS_ADJUSTED = "adjusted"
 BASIS_RAW_FALLBACK = "raw_fallback"
+
+
+class PartialFetchError(RuntimeError):
+    """Too few tickers returned data to publish the result as a dataset."""
+
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +203,10 @@ class BaseDataCollector(ABC):
         self.batch_size = max(1, batch_size)
         self.run_id = run_id or new_run_id()
         self.failed: list[tuple[str, str, str]] = []
+        self.requested_count = 0
+        self.success_count = 0
+        self.universe_total = 0
+        self.started_at = datetime.now(UTC).isoformat()
 
         # Created up front so the error report can always be written, even when
         # every ticker fails and no price CSV is produced.
@@ -184,12 +218,15 @@ class BaseDataCollector(ABC):
         Returns:
             One row per ticker per trading day, sorted by ticker then date.
         """
-        now = datetime.now()
-        start_date = (now - timedelta(days=self.period)).strftime("%Y-%m-%d")
+        now = datetime.now(UTC)
+        exchange_now = now.astimezone(self._exchange_timezone())
+        start_date = (exchange_now - timedelta(days=self.period)).strftime("%Y-%m-%d")
         # yfinance treats `end` as exclusive, so passing today drops today's
-        # completed session. Request tomorrow and let the provider return
-        # whatever sessions have actually closed.
-        end_date = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+        # completed session. Request the day after the exchange's current date
+        # and let the provider return whatever sessions have actually closed.
+        # Using exchange-local rather than host-local time keeps the boundary
+        # correct when the host has already rolled over to the next date.
+        end_date = (exchange_now + timedelta(days=1)).strftime("%Y-%m-%d")
         current_time = now.strftime("%Y-%m-%d %H:%M:%S")
 
         logger.info(f"Starting data fetch from {start_date} to {end_date} (end exclusive)")
@@ -232,12 +269,16 @@ class BaseDataCollector(ABC):
         if not frames:
             logger.warning("No data was fetched")
             logger.info(f"FETCH SUMMARY: 0/{len(symbols)} tickers fetched successfully")
+            self.requested_count = len(symbols)
+            self.success_count = 0
             return pd.DataFrame()
 
         df_all = pd.concat(frames, ignore_index=True)
         df_all = df_all.sort_values(["ticker", "stock_price_date"], kind="mergesort")
 
         success_count = df_all["ticker"].nunique()
+        self.requested_count = len(symbols)
+        self.success_count = int(success_count)
         logger.info(f"FETCH SUMMARY: {success_count}/{len(symbols)} tickers fetched successfully")
         if failed:
             logger.info(f"ERROR FILE: {self.config.error_csv} ({len(failed)} failed tickers)")
@@ -285,10 +326,14 @@ class BaseDataCollector(ABC):
 
     def _read_ticker_file(self) -> list[tuple[str, str]]:
         """Load the universe, restricted to the configured asset types."""
-        universe = load_universe(self.config.ticker_file)
+        universe = load_universe(
+            self.config.ticker_file,
+            default_asset_type=default_asset_type_for(self.config.instrument_type),
+        )
         wanted = self.config.analysis.asset_types
         screened = filter_universe(universe, wanted)
 
+        self.universe_total = len(universe)
         excluded = len(universe) - len(screened)
         logger.info(
             f"Universe: {len(screened)} of {len(universe)} instruments match "
@@ -311,6 +356,65 @@ class BaseDataCollector(ABC):
             (frames, failures as (symbol, error_type, detail))
         """
 
+    @property
+    def success_ratio(self) -> float:
+        """Fraction of requested tickers that returned data."""
+        if not self.requested_count:
+            return 0.0
+        return self.success_count / self.requested_count
+
+    def assert_fetch_is_complete(self, min_ratio: float, allow_partial: bool = False) -> None:
+        """Refuse to publish a materially incomplete dataset.
+
+        Screening is cross-sectional: a run missing a third of the universe can
+        look entirely plausible while omitting most of the candidates, so
+        completeness of the population is part of correctness rather than an
+        operational detail.
+
+        Raises:
+            PartialFetchError: the success ratio is below ``min_ratio``.
+        """
+        if self.success_ratio >= min_ratio or allow_partial:
+            return
+        raise PartialFetchError(
+            f"Only {self.success_count}/{self.requested_count} tickers "
+            f"({self.success_ratio:.1%}) returned data, below the required "
+            f"{min_ratio:.1%}. The previous price file has been left untouched. "
+            f"Re-run, or pass --allow-partial to publish anyway."
+        )
+
+    def write_manifest(
+        self,
+        status: str,
+        error: str | None = None,
+        eod_path: str | None = None,
+        data_as_of: str | None = None,
+    ) -> str:
+        """Record what this fetch did, so analysis can verify its lineage."""
+        manifest = RunManifest(
+            run_id=self.run_id,
+            stage="fetch",
+            exchange=self.exchange,
+            instrument_type=self.instrument_type,
+            started_at=self.started_at,
+            code_revision=code_revision(PROJECT_ROOT),
+            data_as_of=data_as_of,
+            universe_file=self.config.ticker_file,
+            universe_total=self.universe_total,
+            universe_screened=self.requested_count,
+            counts={
+                "requested": self.requested_count,
+                "succeeded": self.success_count,
+                "failed": len(self.failed),
+                "success_ratio": round(self.success_ratio, 4),
+            },
+            outputs={"eod_csv": eod_path, "error_csv": self.config.error_csv},
+        )
+        manifest.finish(status, error)
+        return manifest.write(
+            os.path.join(self.config.data_dir, f"{self.config.prefix}_fetch_manifest.json")
+        )
+
     def save_data(self, data: pd.DataFrame, filename: str | None = None) -> str:
         """Write the fetched data to CSV and return the path ("" if empty)."""
         if data.empty:
@@ -326,10 +430,27 @@ class BaseDataCollector(ABC):
 class YahooFinanceDataFetcher(BaseDataCollector):
     """Fetches EOD data from Yahoo Finance in batched requests."""
 
+    def _exchange_timezone(self):
+        """Timezone of the exchange being fetched, defaulting to UTC."""
+        name = EXCHANGE_TIMEZONES.get(self.exchange)
+        if not name:
+            return UTC
+        try:
+            return ZoneInfo(name)
+        except Exception:
+            logger.warning(f"Unknown timezone {name} for {self.exchange}; using UTC")
+            return UTC
+
     def _yahoo_symbol(self, ticker: str) -> str:
-        """Append the exchange suffix Yahoo Finance expects, if any."""
+        """Translate a directory symbol into Yahoo Finance's symbology.
+
+        Share classes and preferred lines are written ``BF.B`` / ``ABR$D`` by
+        the exchange directory but ``BF-B`` / ``ABR-D`` by Yahoo, which returns
+        an empty frame for the directory form.
+        """
+        symbol = _SHARE_CLASS_SEPARATORS.sub("-", ticker)
         suffix = EXCHANGE_SUFFIXES[self.exchange]
-        return f"{ticker}.{suffix}" if suffix else ticker
+        return f"{symbol}.{suffix}" if suffix else symbol
 
     def _fetch_batch(
         self,
@@ -357,7 +478,9 @@ class YahooFinanceDataFetcher(BaseDataCollector):
                 continue
 
             frames.append(
-                self._normalise(ticker_df, symbol, names.get(symbol, symbol), current_time)
+                self._normalise(
+                    ticker_df, symbol, names.get(symbol, symbol), current_time, self.run_id
+                )
             )
 
         return frames, failed
@@ -397,7 +520,13 @@ class YahooFinanceDataFetcher(BaseDataCollector):
         return frame.dropna(how="all")
 
     @staticmethod
-    def _normalise(frame: pd.DataFrame, ticker: str, name: str, current_time: str) -> pd.DataFrame:
+    def _normalise(
+        frame: pd.DataFrame,
+        ticker: str,
+        name: str,
+        current_time: str,
+        run_id: str = "",
+    ) -> pd.DataFrame:
         """Standardise columns, round prices and attach identifying fields."""
         frame = frame.copy()
 
@@ -428,6 +557,7 @@ class YahooFinanceDataFetcher(BaseDataCollector):
         frame.insert(2, "name", name)
         frame.insert(3, "fetch_time", current_time)
         frame["price_basis"] = basis
+        frame["fetch_run_id"] = run_id
 
         logger.debug(f"Fetched {len(frame)} rows for {ticker}")
         return frame
@@ -453,13 +583,33 @@ class YahooFinanceDataFetcher(BaseDataCollector):
     default=DEFAULT_BATCH_SIZE,
     help=f"Symbols per Yahoo Finance request (default: {DEFAULT_BATCH_SIZE})",
 )
+@click.option(
+    "--min-success-ratio",
+    type=float,
+    default=0.95,
+    help="Refuse to publish unless this fraction of tickers returned data",
+)
+@click.option(
+    "--allow-partial",
+    is_flag=True,
+    help="Publish even when the success ratio is below the threshold",
+)
 @click.option("--log-file", default=None, help="Also write logs to this rotating file")
 @click.option(
     "--log-level",
     default="INFO",
     type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False),
 )
-def main(exchange, instrument_type, period, batch_size, log_file, log_level):
+def main(
+    exchange,
+    instrument_type,
+    period,
+    batch_size,
+    min_success_ratio,
+    allow_partial,
+    log_file,
+    log_level,
+):
     setup_logging(log_level=log_level, log_file=log_file)
 
     if period < 1:
@@ -476,10 +626,30 @@ def main(exchange, instrument_type, period, batch_size, log_file, log_level):
         data = fetcher.fetch_historical_data()
 
         if data.empty:
+            fetcher.write_manifest(status="failed", error="no data fetched")
             click.echo("No data fetched.", err=True)
             sys.exit(1)
 
-        click.echo(f"Data saved to: {fetcher.save_data(data)}")
+        # Check completeness *before* overwriting the previous price file, so a
+        # bad run leaves the last good dataset intact.
+        try:
+            fetcher.assert_fetch_is_complete(min_success_ratio, allow_partial)
+        except PartialFetchError as exc:
+            fetcher.write_manifest(status="partial", error=str(exc))
+            click.echo(f"Error: {exc}", err=True)
+            sys.exit(3)
+
+        path = fetcher.save_data(data)
+        fetcher.write_manifest(
+            status="partial_published"
+            if allow_partial and fetcher.success_ratio < min_success_ratio
+            else "success",
+            eod_path=path,
+            data_as_of=str(data["stock_price_date"].max()),
+        )
+        click.echo(f"Data saved to: {path}")
+    except PartialFetchError:
+        raise
     except Exception as exc:
         logger.error(f"Error: {exc}")
         sys.exit(1)

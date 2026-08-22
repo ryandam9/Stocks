@@ -9,9 +9,17 @@ from fetch_prices import TRANSIENT_ERRORS, YahooFinanceDataFetcher, retry
 class DummyFetcher(YahooFinanceDataFetcher):
     """Bypasses config loading so parsing/normalising can be tested directly."""
 
-    def __init__(self, ticker_file, asset_types=("common_stock",)):
+    def __init__(self, ticker_file, asset_types=("common_stock",), instrument_type="stocks"):
         analysis = AnalysisSettings(asset_types=list(asset_types))
-        self.config = type("C", (), {"ticker_file": str(ticker_file), "analysis": analysis})()
+        self.config = type(
+            "C",
+            (),
+            {
+                "ticker_file": str(ticker_file),
+                "analysis": analysis,
+                "instrument_type": instrument_type,
+            },
+        )()
 
 
 def test_ticker_file_skips_comments_blanks_and_duplicates(tmp_path):
@@ -62,7 +70,9 @@ def _frame():
 
 
 def test_normalise_produces_expected_schema():
-    out = YahooFinanceDataFetcher._normalise(_frame(), "AAA", "Alpha Inc", "2026-06-02 10:00:00")
+    out = YahooFinanceDataFetcher._normalise(
+        _frame(), "AAA", "Alpha Inc", "2026-06-02 10:00:00", run_id="run-1"
+    )
     assert list(out.columns) == [
         "stock_price_date",
         "ticker",
@@ -75,8 +85,11 @@ def test_normalise_produces_expected_schema():
         "adj_close",
         "volume",
         "price_basis",
+        "fetch_run_id",
     ]
     assert out.loc[0, "price_basis"] == "adjusted"
+    # R2-005: every price row identifies the fetch that produced it.
+    assert out.loc[0, "fetch_run_id"] == "run-1"
     assert out.loc[0, "stock_price_date"] == "2026-06-01"
     assert out.loc[0, "close"] == 10.5
     assert out.loc[0, "adj_close"] == 10.2
