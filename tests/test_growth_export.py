@@ -51,7 +51,13 @@ def test_growth_periods_survive_csv_round_trip(tmp_path):
     assert all(len(row) == len(rows[0]) for row in rows)
 
 
-def test_name_containing_a_comma_survives(tmp_path):
+def test_comma_containing_ticker_still_round_trips(tmp_path):
+    """A name with a comma must not shift columns in the combined history.
+
+    The name column itself is no longer stored here -- it is constant per
+    ticker and joinable from the per-window tables -- but the row must still
+    parse cleanly, and growth_periods still contains commas of its own.
+    """
     name = "Grupo Aeromexico, S.A.B. de C.V"
     df = make_series("AERO", name, "2025-06-02", "2025-06-10", 10, 20)
 
@@ -61,8 +67,25 @@ def test_name_containing_a_comma_survives(tmp_path):
 
     with open(path, newline="") as handle:
         rows = list(csv.DictReader(handle))
-    assert rows[0]["name"] == name
+    assert rows[0]["ticker"] == "AERO"
     assert rows[0]["growth_periods"] == "1Y"
+    assert all(len(r) == len(rows[0]) for r in rows), "no column shift"
+
+
+def test_combined_history_omits_run_constant_columns(tmp_path):
+    """Columns constant for a run were 72% of the published database."""
+    from analysis import REDUNDANT_HISTORY_COLUMNS
+
+    df = make_series("AA", "Alpha Inc", "2025-06-02", "2025-06-10", 10, 20)
+    path = build_combined_growth(
+        df, {"1_year": _growth_result(["AA"])}, str(tmp_path / "eod.csv"), {"1_year": "1Y"}
+    )
+
+    with open(path, newline="") as handle:
+        header = set(next(csv.reader(handle)))
+    assert not (header & set(REDUNDANT_HISTORY_COLUMNS)), header
+    # The per-row facts must remain.
+    assert {"stock_price_date", "ticker", "close", "volume", "growth_periods"} <= header
 
 
 def test_periods_follow_configured_window_order(tmp_path):

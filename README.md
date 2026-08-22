@@ -517,7 +517,7 @@ unique and safe as filenames and SQLite identifiers.
 |---|---|
 | `<prefix>_eod.csv` | Full price history, one row per ticker per day |
 | `<prefix>_eod_growth_<label>.csv` | Qualifying tickers for one window, with diagnostics |
-| `<prefix>_eod_growth.csv` | Price history for every ticker that grew in any window, with `growth_count` and `growth_periods` |
+| `<prefix>_eod_growth.csv` | Daily price history for every ticker that grew in any window, with `growth_count` and `growth_periods` |
 | `<prefix>_error.csv` | Tickers that returned no data, with error type |
 | `<prefix>_fetch_manifest.json` | Fetch provenance: run id, requested/succeeded counts, success ratio, `data_as_of` |
 | `<prefix>_analysis_manifest.json` | Analysis provenance: run id, code revision, thresholds, funnel counts, and the `source_run_id` of the fetch that produced the price file |
@@ -533,6 +533,33 @@ when a screen happens to be empty.
 
 SQLite tables mirror those CSVs, plus `consistent_growth_stocks` — tickers
 that qualified in **every** configured window.
+
+### Database size
+
+Almost all of a published database is `<prefix>_growth`, the daily price
+history for matched tickers. The screen results themselves are tiny:
+
+```
+us_stocks_growth            438,643 rows    ~32 MB   daily OHLCV, for charting
+us_stocks_growth_1_year       1,171 rows   ~0.3 MB   the actual screen
+us_stocks_growth_6_months       749 rows   ~0.2 MB
+us_stocks_growth_3_months       521 rows   ~0.1 MB
+us_stocks_growth_1_month        818 rows   ~0.2 MB
+consistent_growth_stocks        152 rows   <0.1 MB
+```
+
+The history table stores only per-row facts. Values that are constant for a
+run (`fetch_time`, `price_basis`, `fetch_run_id`, `run_id`) live in the run
+manifest, and `name` is joinable from any per-window table, so none of them is
+repeated on all 438k rows. The database is also `VACUUM`ed before publication,
+since bulk inserts otherwise leave roughly half the file as free pages.
+
+If you do not need price history for charting, deleting that one table leaves
+a database under 1 MB with every screen result intact:
+
+```bash
+sqlite3 /path/to/us.db "DROP TABLE us_stocks_growth; VACUUM;"
+```
 
 ## Tests
 

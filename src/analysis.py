@@ -51,6 +51,17 @@ MAX_STALENESS_DAYS = 10
 
 REQUIRED_COLUMNS = {"ticker", "name", "close", "stock_price_date"}
 
+# Columns omitted from the combined price-history output. Each is either
+# constant across a whole run or joinable from the per-window tables, so
+# storing it on every daily row is pure duplication.
+REDUNDANT_HISTORY_COLUMNS = [
+    "name",
+    "fetch_time",
+    "price_basis",
+    "fetch_run_id",
+    "run_id",
+]
+
 # Price provenance. Only a known raw fallback is excluded: an unadjusted series
 # spanning a split produces a badly wrong return. UNKNOWN marks data fetched
 # before provenance was recorded, which is screened with a warning.
@@ -353,7 +364,10 @@ def build_combined_growth(
     base_columns = [c for c in df.columns if c != "price"]
 
     if not flags:
-        empty = pd.DataFrame(columns=base_columns + ["growth_count", "growth_periods", "run_id"])
+        empty = pd.DataFrame(
+            columns=[c for c in base_columns if c not in REDUNDANT_HISTORY_COLUMNS]
+            + ["growth_count", "growth_periods"]
+        )
         atomic_write_csv(empty, output_path)
         print(f"\nCombined growth history: 0 rows (no ticker qualified) -> {output_path}")
         return output_path
@@ -373,7 +387,12 @@ def build_combined_growth(
     combined = df.merge(summary, on="ticker", how="inner")
     combined = combined.drop(columns=["price"], errors="ignore")
     combined["stock_price_date"] = combined["stock_price_date"].dt.strftime("%Y-%m-%d")
-    combined["run_id"] = run_id
+
+    # Keep only per-row facts. Columns that are constant for a run (fetch_time,
+    # price_basis, fetch_run_id, run_id) or derivable by joining on ticker
+    # (name) were repeated on all 438k rows and accounted for 72% of the
+    # database. They live in the manifest and the per-window tables instead.
+    combined = combined.drop(columns=REDUNDANT_HISTORY_COLUMNS, errors="ignore")
 
     atomic_write_csv(combined, output_path)
     print(

@@ -162,6 +162,11 @@ CREATE TABLE consistent_growth_stocks AS
 SQL
 log "  consistent_growth_stocks: $(sqlite3 "$TMP_DB" 'SELECT COUNT(*) FROM consistent_growth_stocks;') rows"
 
+# sqlite-utils leaves a large freelist behind after bulk inserts -- about half
+# the file. Reclaim it before publishing; this takes well under a second.
+log "  Compacting"
+sqlite3 "$TMP_DB" "VACUUM;"
+
 # Publish atomically: readers see either the previous DB or the complete new one.
 mv -f "$TMP_DB" "$DB"
 trap - EXIT
