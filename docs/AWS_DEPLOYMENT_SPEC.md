@@ -560,9 +560,10 @@ flowchart LR
     H --> F
 ```
 
-Because the schedule targets a task definition family (not a pinned revision)
-and the image tag is `latest`, a plain image push is enough for a code change.
-Terraform is only needed when sizing, environment, or schedule changes.
+Because the task definitions run the `latest` tag, a plain image push is enough
+for a code change — the schedule pins a task definition revision, but that
+revision resolves `latest` at task start. Terraform is only needed when sizing,
+environment, or schedule changes.
 
 **The stale-image trap applies here too.** `COPY src/ ./src/` bakes the code
 into the image; pushing to `master` without rebuilding leaves Fargate running
@@ -615,21 +616,39 @@ Item 1 was the only one worth a code change before go-live, and is done.
 
 ## 12. Terraform layout
 
+Written and validated — see [`infra/`](../infra) and its
+[README](../infra/README.md).
+
 ```
 infra/
-├── main.tf              providers, backend, locals
-├── network.tf           VPC, public subnet, IGW, SG, S3 gateway endpoint
-├── ecr.tf               repository + lifecycle policy
-├── ecs.tf               cluster, two task definitions
-├── iam.tf               execution, task, scheduler roles
-├── schedule.tf          two EventBridge Scheduler schedules
-├── observability.tf     log groups, metric filters, alarms, SNS, EventBridge rules
+├── versions.tf              providers, partial S3 backend
+├── main.tf                  locals: the two universes, the timezone
+├── network.tf               VPC, two public subnets, IGW, SG, S3 gateway endpoint
+├── ecr.tf                   repository + lifecycle policy
+├── ecs.tf                   cluster, two task definitions
+├── iam.tf                   execution, task, scheduler roles
+├── schedule.tf              two EventBridge Scheduler schedules + DLQ
+├── storage.tf               versioning and expiry on the existing data bucket
+├── observability.tf         log groups, metric filters, alarms, SNS, EventBridge rules
 ├── variables.tf
-└── outputs.tf
+├── outputs.tf
+├── terraform.tfvars.example   (real one is gitignored)
+├── backend.hcl.example        (real one is gitignored)
+└── bootstrap/               state bucket + lock table, local state
 ```
 
-State in S3 with DynamoDB locking, or Terraform Cloud — not local, since the
-schedule is a shared production resource.
+State in S3 with a DynamoDB lock table, provisioned by `infra/bootstrap`,
+which cannot use the backend it is creating and so keeps state locally.
+
+`terraform plan` against the account: **43 to add, 0 to change, 0 to destroy** —
+the versioning and lifecycle rules attach to the existing data bucket without
+replacing it.
+
+**One deprecation to know about.** Terraform 1.11+ deprecates the backend's
+`dynamodb_table` parameter in favour of S3-native locking (`use_lockfile =
+true`), and warns on every `init`. The lock table is still provisioned and
+still works; migrating is a one-line change documented in
+`backend.hcl.example`.
 
 ### 12.1 The schedule resource
 
@@ -731,15 +750,22 @@ silent one.
 
 ---
 
-## 14. Open questions
+## 14. Decisions
 
-1. **Alert recipient** — which address subscribes to `stocks-alerts`?
-2. **Existing VPC** — this spec creates a dedicated VPC. If the account has one
-   already, point the task at an existing public subnet and drop `network.tf`.
-3. **Terraform state backend** — S3 + DynamoDB, or Terraform Cloud?
-4. **ASX universe additions** — new ASX ETFs still arrive only by editing
-   `config/asx_etf.csv` and rebuilding the image. Acceptable, or should
-   phase 2 add a discovery source?
-5. **`consistent_growth_stocks` is currently 0 rows for ASX** — a real screening
-   outcome, not a bug, but worth deciding whether an empty table should itself
-   raise a low-severity alert.
+Settled 2026-08-23; the Terraform in `infra/` implements all of them.
+
+| # | Question | Decision |
+|---|---|---|
+| 1 | Alert recipient | A single email subscription, address held in gitignored `terraform.tfvars`. AWS sends a confirmation link on first apply — until it is clicked, no alert is delivered. |
+| 2 | VPC | A new one in `ap-southeast-2`, `10.20.0.0/16`, two public subnets across AZs. The account's default VPC is left alone. |
+| 3 | Terraform state | S3 with a DynamoDB lock table, both created by `infra/bootstrap`. |
+| 4 | ASX universe additions | Left as-is. New ASX ETFs arrive by editing `config/asx_etf.csv` and rebuilding, which suits a monthly image refresh — and the image being the source of truth is what makes the task stateless (D1). |
+| 5 | Empty `consistent_growth_stocks` | No alert. An empty table is a real screening outcome, not a fault: on 2026-08-21 the ASX intersection was genuinely empty because no ETF cleared 25% over three months and the long-window and short-window leaders were disjoint. |
+
+### 14.1 Still open
+
+- **The account ID never appears in this repository.** IAM ARNs resolve it at
+  plan time via `aws_caller_identity`. Keep it that way.
+- Nothing else blocks `terraform apply`. The rollout runbook is in
+  [`infra/README.md`](../infra/README.md); phase 5, forcing a real failure to
+  prove the alerting works, is the step most worth not skipping.

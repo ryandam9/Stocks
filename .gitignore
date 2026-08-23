@@ -34,4 +34,6 @@ data/
 *.tfstate
 *.tfstate.*
 .terraform/
-.terraform.lock.hcl
+backend.hcl
+# .terraform.lock.hcl is deliberately NOT ignored: committing it pins provider
+# versions and hashes, and it holds nothing account-specific.
