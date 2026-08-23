@@ -1,6 +1,7 @@
 # Local runs. Each service is one universe; both share the data volume, which
 # is what a Fargate task would back with EFS or S3 instead.
 #
+#   GIT_REVISION=$(git rev-parse --short HEAD) docker compose build
 #   docker compose run --rm us all      # sync + fetch + analyse + publish
 #   docker compose run --rm asx fetch
 #   docker compose run --rm us analyze --allow-stale
@@ -33,7 +34,13 @@ x-stocks-environment: &stocks-environment
 
 services:
   us:
-    build: .
+    build:
+      context: .
+      args:
+        # Recorded as run_metadata.code_revision in every published database.
+        # Compose cannot shell out, so pass it in:
+        #   GIT_REVISION=$(git rev-parse --short HEAD) docker compose build
+        GIT_REVISION: ${GIT_REVISION:-unknown}
     image: stocks:dev
     volumes:
       - stocks-data:/data
@@ -41,7 +48,10 @@ services:
     command: ["all", "--exchange", "US", "--instrument-type", "stocks", "--period", "365"]
 
   asx:
-    build: .
+    build:
+      context: .
+      args:
+        GIT_REVISION: ${GIT_REVISION:-unknown}
     image: stocks:dev
     volumes:
       - stocks-data:/data

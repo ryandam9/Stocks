@@ -103,3 +103,19 @@ def test_unknown_price_history_sampling_rejected(tmp_path, monkeypatch):
     write_config(tmp_path, monkeypatch, body)
     with pytest.raises(ValueError, match="price_history_sampling must be one of"):
         load_config("US", "stocks")
+
+
+def test_code_revision_prefers_the_baked_in_value(monkeypatch):
+    """Containers exclude .git, so git cannot answer; the image bakes it in."""
+    import runmeta
+
+    monkeypatch.setenv(runmeta.CODE_REVISION_ENV, "cafe123")
+    assert runmeta.code_revision("/nonexistent") == "cafe123"
+
+
+def test_code_revision_falls_back_to_git(monkeypatch):
+    import runmeta
+
+    monkeypatch.delenv(runmeta.CODE_REVISION_ENV, raising=False)
+    # No repository at this path, and no baked value: must not raise.
+    assert runmeta.code_revision("/nonexistent") == "unknown"

@@ -30,7 +30,13 @@ RUN apt-get update && \
     apt-get install --no-install-recommends -y tzdata ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
-ENV VIRTUAL_ENV=/opt/venv \
+# Which commit this image was built from. The image excludes .git, so the
+# manifest cannot ask git; without this every run records "unknown".
+#   docker build --build-arg GIT_REVISION=$(git rev-parse --short HEAD) .
+ARG GIT_REVISION=unknown
+
+ENV STOCKS_CODE_REVISION=${GIT_REVISION} \
+    VIRTUAL_ENV=/opt/venv \
     PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \

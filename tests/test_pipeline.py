@@ -240,3 +240,100 @@ def test_explicit_upload_on_a_non_publishing_job_is_an_error(monkeypatch):
 
     assert uploaded == []
     assert result.exit_code != 0
+
+
+# ------------------------------------------------- provenance travels with the data
+
+
+def _write_manifest(tmp_path, **overrides):
+    import json
+
+    body = {
+        "run_id": "20260823T000000Z-abc",
+        "code_revision": "deadbee",
+        "exchange": "ASX",
+        "instrument_type": "etf",
+        "data_as_of": "2026-08-21",
+        "started_at": "2026-08-23T00:00:00+00:00",
+        "finished_at": "2026-08-23T00:00:01+00:00",
+        "status": "success",
+        "universe_total": 403,
+        "universe_screened": 402,
+        "provider": "yahoo_finance",
+        "source_run_id": "20260822T000000Z-def",
+        "source_status": "success",
+        "thresholds": {"min_price": 2.0, "price_history_sampling": "weekly"},
+        "counts": {
+            "3_months": {
+                "Universe in window": 402,
+                "Liquid enough": 337,
+                "Above price floor": 318,
+                "Return above 25.0%": 0,
+            }
+        },
+    }
+    body.update(overrides)
+    path = tmp_path / "m.json"
+    path.write_text(json.dumps(body))
+    return str(path)
+
+
+def test_manifest_tables_carry_the_run_identity(tmp_path):
+    """The database has to say which commit and settings produced it.
+
+    On Fargate the manifest file is discarded with the task, so this is the
+    only surviving record.
+    """
+    import json
+
+    conn = sqlite3.connect(":memory:")
+    assert pipeline.load_manifest_tables(conn, _write_manifest(tmp_path)) == 4
+
+    row = conn.execute(
+        "SELECT code_revision, source_run_id, settings_json FROM run_metadata"
+    ).fetchone()
+    assert row[0] == "deadbee"
+    assert row[1] == "20260822T000000Z-def"
+    assert json.loads(row[2])["price_history_sampling"] == "weekly"
+
+
+def test_funnel_keeps_the_order_the_filters_ran_in(tmp_path):
+    """Alphabetical order would make the attrition unreadable."""
+    conn = sqlite3.connect(":memory:")
+    pipeline.load_manifest_tables(conn, _write_manifest(tmp_path))
+
+    stages = [
+        r[0]
+        for r in conn.execute(
+            "SELECT stage FROM screen_funnel WHERE \"window\"='3_months' ORDER BY position"
+        )
+    ]
+    assert stages == [
+        "Universe in window",
+        "Liquid enough",
+        "Above price floor",
+        "Return above 25.0%",
+    ]
+
+
+def test_funnel_explains_an_empty_result(tmp_path):
+    """The question this table exists to answer, as a single query."""
+    conn = sqlite3.connect(":memory:")
+    pipeline.load_manifest_tables(conn, _write_manifest(tmp_path))
+
+    eligible, qualified = conn.execute(
+        "SELECT (SELECT count FROM screen_funnel WHERE stage='Above price floor'),"
+        "       (SELECT count FROM screen_funnel WHERE stage LIKE 'Return above%')"
+    ).fetchone()
+    # 318 tickers were eligible and none cleared the bar: a real screening
+    # outcome, not a filter that removed everything.
+    assert (eligible, qualified) == (318, 0)
+
+
+def test_tables_exist_even_without_a_manifest(tmp_path):
+    """A consumer's query must not fail just because analyze did not run."""
+    conn = sqlite3.connect(":memory:")
+    assert pipeline.load_manifest_tables(conn, str(tmp_path / "absent.json")) == 0
+
+    assert conn.execute("SELECT COUNT(*) FROM run_metadata").fetchone() == (0,)
+    assert conn.execute("SELECT COUNT(*) FROM screen_funnel").fetchone() == (0,)

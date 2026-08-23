@@ -10,6 +10,7 @@ complete, so a reader never sees a half-populated database.
 """
 
 import csv
+import json
 import logging
 import os
 import sqlite3
@@ -128,6 +129,79 @@ def build_consistent_growth(conn: sqlite3.Connection, prefix: str, labels: list[
     return conn.execute("SELECT COUNT(*) FROM consistent_growth_stocks").fetchone()[0]
 
 
+def load_manifest_tables(conn: sqlite3.Connection, manifest_path: str) -> int:
+    """Embed the run's provenance manifest into the database as two tables.
+
+    The manifest is written next to the CSVs, on a volume that is ephemeral in
+    a container -- so on Fargate it is discarded with the task. Publishing it
+    as a separate object would mean fetching a second file to answer questions
+    about the first; carrying it inside the database means the receipt travels
+    with the data and is queryable where the data already is.
+
+    ``run_metadata`` holds one row: which commit ran, against what, when, and
+    under which settings. ``screen_funnel`` holds the per-window attrition that
+    makes an empty result explainable -- whether nothing qualified or a filter
+    removed everything.
+
+    Returns:
+        Number of funnel rows written, or 0 when there is no manifest.
+    """
+    conn.execute("DROP TABLE IF EXISTS run_metadata")
+    conn.execute("DROP TABLE IF EXISTS screen_funnel")
+    conn.execute(
+        """
+        CREATE TABLE run_metadata (
+          run_id TEXT, code_revision TEXT, exchange TEXT, instrument_type TEXT,
+          data_as_of TEXT, started_at TEXT, finished_at TEXT, status TEXT,
+          universe_total INTEGER, universe_screened INTEGER, provider TEXT,
+          source_run_id TEXT, source_status TEXT, settings_json TEXT
+        )
+        """
+    )
+    conn.execute(
+        'CREATE TABLE screen_funnel ("window" TEXT, position INTEGER, stage TEXT, count INTEGER)'
+    )
+
+    if not os.path.exists(manifest_path):
+        # A publish without a preceding analyze in the same run. The tables are
+        # created empty rather than skipped, so a consumer's query still works.
+        logger.info("  No analysis manifest; run_metadata and screen_funnel are empty")
+        return 0
+
+    with open(manifest_path) as handle:
+        manifest = json.load(handle)
+
+    conn.execute(
+        "INSERT INTO run_metadata VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        (
+            manifest.get("run_id"),
+            manifest.get("code_revision"),
+            manifest.get("exchange"),
+            manifest.get("instrument_type"),
+            manifest.get("data_as_of"),
+            manifest.get("started_at"),
+            manifest.get("finished_at"),
+            manifest.get("status"),
+            manifest.get("universe_total"),
+            manifest.get("universe_screened"),
+            manifest.get("provider"),
+            manifest.get("source_run_id"),
+            manifest.get("source_status"),
+            json.dumps(manifest.get("thresholds", {}), sort_keys=True),
+        ),
+    )
+
+    # JSON preserves insertion order, so position keeps the funnel readable in
+    # the order the filters actually ran rather than alphabetically.
+    rows = [
+        (window, position, stage, count)
+        for window, stages in manifest.get("counts", {}).items()
+        for position, (stage, count) in enumerate(stages.items())
+    ]
+    conn.executemany("INSERT INTO screen_funnel VALUES (?,?,?,?)", rows)
+    return len(rows)
+
+
 def publish(cfg: StockConfig) -> str:
     """Build the database from this run's CSVs and publish it atomically.
 
@@ -164,6 +238,17 @@ def publish(cfg: StockConfig) -> str:
                 f"  consistent_growth_stocks: {count} rows "
                 f"(windows: {' '.join(cfg.consistent_growth_labels) or 'none'})"
             )
+
+            funnel_rows = load_manifest_tables(
+                conn,
+                os.path.join(cfg.data_dir, f"{cfg.prefix}_analysis_manifest.json"),
+            )
+            if funnel_rows:
+                revision = conn.execute("SELECT code_revision FROM run_metadata").fetchone()
+                logger.info(
+                    f"  run_metadata + screen_funnel: {funnel_rows} funnel rows "
+                    f"(code_revision {revision[0]})"
+                )
             conn.commit()
 
             # Bulk inserts leave a large freelist; reclaim it before publishing.

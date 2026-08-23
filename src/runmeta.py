@@ -23,8 +23,21 @@ def new_run_id() -> str:
     return f"{stamp}-{uuid.uuid4().hex[:8]}"
 
 
+# Set at image build time from --build-arg GIT_REVISION. The image excludes
+# .git, so without this every containerised run would record "unknown" -- and
+# knowing which commit produced a database is most of the point.
+CODE_REVISION_ENV = "STOCKS_CODE_REVISION"
+
+
 def code_revision(project_root: str) -> str:
-    """Current git revision, or 'unknown' outside a repository."""
+    """Current code revision, or 'unknown' when it cannot be established.
+
+    Prefers :data:`CODE_REVISION_ENV`, which containers set at build time,
+    and falls back to asking git for a working copy.
+    """
+    baked = os.environ.get(CODE_REVISION_ENV, "").strip()
+    if baked:
+        return baked
     try:
         result = subprocess.run(
             ["git", "-C", project_root, "rev-parse", "--short", "HEAD"],

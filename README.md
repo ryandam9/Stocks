@@ -249,7 +249,7 @@ Equivalent, but you supply by hand everything compose would have supplied —
 `.env` is not read by your shell, and the image does not contain it:
 
 ```bash
-docker build -t stocks:dev .
+docker build --build-arg GIT_REVISION=$(git rev-parse --short HEAD) -t stocks:dev .
 
 set -a; source .env; set +a
 eval "$(aws configure export-credentials --format env)"
@@ -268,7 +268,9 @@ Omitting `-v stocks-data:/data` is the trap: docker creates a fresh anonymous
 volume instead of failing, and the run silently operates on empty data.
 
 **Rebuild after editing source.** `COPY src/ ./src/` bakes the code into the
-image. A stale image gives no warning — it just runs the old code.
+image. A stale image gives no warning — it just runs the old code. Query
+`run_metadata.code_revision` in a published database to see which commit
+actually produced it.
 
 ### Copying the databases out of the volume
 
@@ -371,6 +373,7 @@ aws ecr get-login-password --region ap-southeast-2 \
   | docker login --username AWS --password-stdin "${REPO%%/*}"
 
 docker build --platform linux/amd64 \
+  --build-arg GIT_REVISION=$(git rev-parse --short HEAD) \
   -t "${REPO}:latest" -t "${REPO}:git-$(git rev-parse --short HEAD)" .
 
 docker push "${REPO}:latest"
@@ -873,6 +876,41 @@ unique and safe as filenames and SQLite identifiers.
 | `<prefix>_error.csv` | Tickers that returned no data, with error type |
 | `<prefix>_fetch_manifest.json` | Fetch provenance: run id, requested/succeeded counts, success ratio, `data_as_of` |
 | `<prefix>_analysis_manifest.json` | Analysis provenance: run id, code revision, thresholds, funnel counts, and the `source_run_id` of the fetch that produced the price file |
+
+### Provenance travels inside the database
+
+The manifests above are written next to the CSVs, on a volume that is ephemeral
+in a container — so a scheduled AWS run discards them. The published database
+therefore carries its own receipt, in two tables:
+
+| Table | Contents |
+|---|---|
+| `run_metadata` | One row: `code_revision`, `run_id`, `data_as_of`, `source_run_id`, universe counts, and `settings_json` — every threshold that shaped this build |
+| `screen_funnel` | Per-window attrition, one row per filter stage, ordered by `position` |
+
+**`run_metadata` answers "did my change actually ship?"** Config files live
+inside the image, so editing a threshold and running `terraform apply` changes
+nothing. `code_revision` tells you which commit is really running:
+
+```sql
+SELECT code_revision, data_as_of, run_id FROM run_metadata;
+-- 63ad976 | 2026-08-21 | 20260823T040346Z-03fa65c3
+```
+
+**`screen_funnel` answers "why is this table empty?"** — without shelling into
+CloudWatch:
+
+```sql
+SELECT stage, count FROM screen_funnel WHERE "window" = '3_months' ORDER BY position;
+-- Universe in window   402
+-- Liquid enough        337
+-- Above price floor    318
+-- Return above 25.0%     0
+```
+
+318 ETFs were eligible and none cleared 25%. That is a real screening outcome,
+not a filter that removed everything — a distinction that is otherwise
+guesswork.
 
 Every growth file is written on every run, empty-but-headed when nothing
 qualifies, so a later run can never leave an earlier run's results in place to
