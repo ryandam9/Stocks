@@ -634,21 +634,23 @@ infra/
 ├── outputs.tf
 ├── terraform.tfvars.example   (real one is gitignored)
 ├── backend.hcl.example        (real one is gitignored)
-└── bootstrap/               state bucket + lock table, local state
+└── bootstrap/               state bucket, local state
 ```
 
-State in S3 with a DynamoDB lock table, provisioned by `infra/bootstrap`,
-which cannot use the backend it is creating and so keeps state locally.
+State in S3, in a bucket provisioned by `infra/bootstrap`, which cannot use the
+backend it is creating and so keeps state locally. Locking is S3-native
+(`use_lockfile = true`): Terraform takes a conditional-write lock on a
+`.tflock` object beside the state file, so there is no DynamoDB table to
+provision, pay for, or keep in step with the bucket.
 
 `terraform plan` against the account: **43 to add, 0 to change, 0 to destroy** —
 the versioning and lifecycle rules attach to the existing data bucket without
 replacing it.
 
-**One deprecation to know about.** Terraform 1.11+ deprecates the backend's
-`dynamodb_table` parameter in favour of S3-native locking (`use_lockfile =
-true`), and warns on every `init`. The lock table is still provisioned and
-still works; migrating is a one-line change documented in
-`backend.hcl.example`.
+The alternative, a DynamoDB lock table via the backend's `dynamodb_table`
+parameter, is deprecated as of Terraform 1.11 and warns on every `init`. It
+still works, but it is a second resource to provision for a lock S3 can take
+by itself.
 
 ### 12.1 The schedule resource
 
@@ -758,7 +760,7 @@ Settled 2026-08-23; the Terraform in `infra/` implements all of them.
 |---|---|---|
 | 1 | Alert recipient | A single email subscription, address held in gitignored `terraform.tfvars`. AWS sends a confirmation link on first apply — until it is clicked, no alert is delivered. |
 | 2 | VPC | A new one in `ap-southeast-2`, `10.20.0.0/16`, two public subnets across AZs. The account's default VPC is left alone. |
-| 3 | Terraform state | S3 with a DynamoDB lock table, both created by `infra/bootstrap`. |
+| 3 | Terraform state | S3, bucket created by `infra/bootstrap`. Locking is S3-native (`use_lockfile`) rather than a DynamoDB table, which Terraform 1.11 deprecated. |
 | 4 | ASX universe additions | Left as-is. New ASX ETFs arrive by editing `config/asx_etf.csv` and rebuilding, which suits a monthly image refresh — and the image being the source of truth is what makes the task stateless (D1). |
 | 5 | Empty `consistent_growth_stocks` | No alert. An empty table is a real screening outcome, not a fault: on 2026-08-21 the ASX intersection was genuinely empty because no ETF cleared 25% over three months and the long-window and short-window leaders were disjoint. |
 

@@ -3,14 +3,14 @@
 #   terraform init -backend-config=backend.hcl
 #
 # backend.hcl is gitignored -- bucket names identify the account. Create the
-# bucket and lock table first with infra/bootstrap.
+# state bucket first with infra/bootstrap.
 
-bucket         = "your-terraform-state-bucket"
-key            = "stocks/terraform.tfstate"
-region         = "ap-southeast-2"
-dynamodb_table = "terraform-locks"
-encrypt        = true
+bucket  = "your-terraform-state-bucket"
+key     = "stocks/terraform.tfstate"
+region  = "ap-southeast-2"
+encrypt = true
 
-# Terraform 1.11+ deprecates dynamodb_table in favour of S3-native locking.
-# To migrate: drop the line above, add `use_lockfile = true`, re-run init, and
-# delete the table. Kept as-is because the lock table is what is provisioned.
+# S3-native locking: Terraform takes a conditional-write lock on a .tflock
+# object beside the state file. No DynamoDB table to provision or pay for.
+# Supersedes the deprecated dynamodb_table parameter.
+use_lockfile = true

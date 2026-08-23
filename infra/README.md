@@ -12,7 +12,7 @@ gitignored; `.example` copies of both are committed:
 | File | Holds |
 |---|---|
 | `terraform.tfvars` | data bucket name, alert email |
-| `backend.hcl` | state bucket name, lock table |
+| `backend.hcl` | state bucket name |
 
 The account ID appears in neither: IAM ARNs resolve it at plan time through
 `aws_caller_identity`.
@@ -20,8 +20,8 @@ The account ID appears in neither: IAM ARNs resolve it at plan time through
 ## First run
 
 ```bash
-# 1. State bucket and lock table. Keeps its own state locally; nothing here
-#    is worth remote state, and it cannot use the backend it is creating.
+# 1. State bucket. Locking is S3-native, so there is no table. Keeps its own
+#    state locally: it cannot use the backend it is creating.
 cd bootstrap
 terraform init
 terraform apply -var state_bucket=<globally-unique-name>

@@ -8,12 +8,13 @@ terraform {
     }
   }
 
-  # Partial configuration: the state bucket and lock table are named in
-  # backend.hcl, which is gitignored because this repository is public.
+  # Partial configuration: the state bucket is named in backend.hcl, which
+  # is gitignored because this repository is public. Locking is S3-native
+  # (use_lockfile), so no DynamoDB table is involved.
   #
   #   terraform init -backend-config=backend.hcl
   #
-  # Create them first with infra/bootstrap, which keeps state locally.
+  # Create it first with infra/bootstrap, which keeps state locally.
   backend "s3" {}
 }
 
