@@ -186,21 +186,34 @@ def kept_dates(frame, mode):
 def test_weekly_sampling_keeps_the_last_session_of_each_week():
     """The last, not the first: a chart has to end on the newest close."""
     dates = [
-        "2026-01-05", "2026-01-06", "2026-01-07", "2026-01-08", "2026-01-09",
-        "2026-01-12", "2026-01-13", "2026-01-14", "2026-01-15", "2026-01-16",
-        "2026-01-19", "2026-01-20",
+        "2026-01-05",
+        "2026-01-06",
+        "2026-01-07",
+        "2026-01-08",
+        "2026-01-09",
+        "2026-01-12",
+        "2026-01-13",
+        "2026-01-14",
+        "2026-01-15",
+        "2026-01-16",
+        "2026-01-19",
+        "2026-01-20",
     ]
     assert kept_dates(history_frame(dates), "weekly") == [
-        "2026-01-09", "2026-01-16", "2026-01-20",
+        "2026-01-09",
+        "2026-01-16",
+        "2026-01-20",
     ]
 
 
 def test_sampling_is_per_ticker():
     """One ticker's calendar must not decide which rows another keeps."""
-    frame = pd.concat([
-        history_frame(["2026-01-05", "2026-01-09"], tickers=("AAA",)),
-        history_frame(["2026-01-06"], tickers=("BBB",)),
-    ])
+    frame = pd.concat(
+        [
+            history_frame(["2026-01-05", "2026-01-09"], tickers=("AAA",)),
+            history_frame(["2026-01-06"], tickers=("BBB",)),
+        ]
+    )
     out = _sample_price_history(frame, "weekly")
     assert {(r.ticker, r.stock_price_date.strftime("%Y-%m-%d")) for r in out.itertuples()} == {
         ("AAA", "2026-01-09"),
