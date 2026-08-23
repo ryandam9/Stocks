@@ -264,3 +264,28 @@ def test_sampling_an_empty_frame_is_safe():
     """No qualifying ticker is an ordinary outcome, not an error."""
     empty = history_frame(["2026-01-05"]).iloc[0:0]
     assert _sample_price_history(empty, "weekly").empty
+
+
+# ------------------------------------------------------------------ threshold column
+
+
+def test_threshold_column_records_the_bar_the_row_cleared(build_frame, latest_date):
+    """A reader should see why a ticker qualified without opening the config."""
+    df = build_frame(make_series("AAA", "Alpha", "2025-06-02", latest_date, 100, 200))
+    result = growth(df, latest_date, months=12, threshold=25.0)
+
+    assert result["threshold"].tolist() == [25.0]
+    assert (result["pct_change"] > result["threshold"]).all()
+
+
+def test_threshold_differs_per_window(build_frame, latest_date):
+    """It is a per-window setting, so two tables in one database disagree."""
+    df = build_frame(make_series("AAA", "Alpha", "2025-06-02", latest_date, 100, 200))
+
+    # A linear 100 -> 200 year grows only ~4% in its final month, so the short
+    # window needs a bar it can actually clear for this to test anything.
+    year = growth(df, latest_date, months=12, threshold=25.0)
+    month = growth(df, latest_date, months=1, threshold=1.0)
+
+    assert year["threshold"].tolist() == [25.0]
+    assert month["threshold"].tolist() == [1.0]

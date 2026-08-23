@@ -51,6 +51,10 @@ GROWTH_COLUMN_TYPES = [
     ("last_date", "TEXT"),
     ("latest_price", "FLOAT"),
     ("pct_change", "FLOAT"),
+    # The bar this row had to clear, carried per row so a reader can see why a
+    # ticker qualified without going back to the config or the manifest. Set
+    # per window, so it differs between tables in the same database.
+    ("threshold", "FLOAT"),
     ("observations", "INTEGER"),
     ("days_covered", "INTEGER"),
     ("coverage", "FLOAT"),

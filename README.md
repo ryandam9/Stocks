@@ -507,6 +507,22 @@ Prices are split- and dividend-adjusted. Endpoints are the median of
 `endpoint_window` trading days rather than a single close, so one bad print
 cannot define a window's return.
 
+Every qualifying row carries the `threshold` it cleared, so a result explains
+itself without a trip back to the config:
+
+```sql
+SELECT ticker, pct_change, threshold FROM us_stocks_growth_1_year LIMIT 3;
+-- SNDK  3311.89  25.0
+-- AXTI  2492.91  25.0
+-- CCG   1795.73  25.0
+```
+
+It is a per-window setting, so the value differs between tables in the same
+database — 25.0 in the 1-year, 6-month and 3-month tables, 10.0 in the 1-month
+and 7-day ones. `consistent_growth_stocks` reports it as
+`threshold_shortest_window`, alongside the `pct_change_shortest_window` it
+already carried.
+
 Every run prints an eligibility funnel, so an empty result is never ambiguous:
 
 ```
@@ -693,7 +709,7 @@ unique and safe as filenames and SQLite identifiers.
 | File | Contents |
 |---|---|
 | `<prefix>_eod.csv` | Full price history, one row per ticker per day |
-| `<prefix>_eod_growth_<label>.csv` | Qualifying tickers for one window, with diagnostics |
+| `<prefix>_eod_growth_<label>.csv` | Qualifying tickers for one window, with the `threshold` cleared and diagnostics |
 | `<prefix>_eod_growth.csv` | Sampled price history for every ticker that grew in any window, with `growth_count` and `growth_periods` |
 | `<prefix>_error.csv` | Tickers that returned no data, with error type |
 | `<prefix>_fetch_manifest.json` | Fetch provenance: run id, requested/succeeded counts, success ratio, `data_as_of` |

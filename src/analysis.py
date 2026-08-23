@@ -337,6 +337,7 @@ def compute_window_growth(
         + window_label_short(window)
     )
 
+    result["threshold"] = threshold
     return result[GROWTH_COLUMNS].sort_values("pct_change", ascending=False), funnel
 
 
