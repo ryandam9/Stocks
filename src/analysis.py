@@ -352,14 +352,52 @@ def _growth_output_path(eod_path: str, suffix: str) -> str:
     return f"{stem}{suffix}{extension or '.csv'}"
 
 
+def _sample_price_history(combined: pd.DataFrame, sampling: str) -> pd.DataFrame:
+    """Thin published price history down to one row per ticker per period.
+
+    Every mode keeps the **last trading day** of each period rather than a
+    fixed calendar date. Anchoring on calendar dates does not survive contact
+    with a trading calendar: over the last year the 1st of the month was a
+    trading day in only 6 of 13 months and the 15th in 8 of 13, so a fixed
+    anchor needs a nearest-session rule and still lands unevenly.
+
+    Keeping each period's last session also guarantees the series ends on the
+    newest close, which is the point a chart is read from.
+
+    Args:
+        sampling: one of :data:`config.PRICE_HISTORY_SAMPLING`.
+
+    Returns:
+        ``combined`` unchanged for ``"daily"``, else its sampled subset.
+    """
+    if sampling == "daily" or combined.empty:
+        return combined
+
+    dates = combined["stock_price_date"]
+    if sampling == "weekly":
+        period = dates.dt.to_period("W").astype(str)
+    elif sampling == "month_end":
+        period = dates.dt.to_period("M").astype(str)
+    elif sampling == "semi_monthly":
+        # Two periods a month, split at the 15th.
+        half = dates.dt.day.gt(15).map({False: "H1", True: "H2"})
+        period = dates.dt.to_period("M").astype(str) + "-" + half
+    else:  # pragma: no cover - load_config rejects anything else
+        raise ValueError(f"unknown price_history_sampling: {sampling!r}")
+
+    last = combined.groupby(["ticker", period], sort=False)["stock_price_date"].transform("max")
+    return combined[dates.eq(last)]
+
+
 def build_combined_growth(
     df: pd.DataFrame,
     results: dict[str, pd.DataFrame],
     file_path: str,
     abbreviations: dict[str, str],
     run_id: str = "",
+    sampling: str = "weekly",
 ) -> str:
-    """Write full price history for every ticker that grew in any window.
+    """Write sampled price history for every ticker that grew in any window.
 
     Each row carries ``growth_count`` (how many windows the ticker qualified
     in) and ``growth_periods`` (which ones). Built with pandas rather than awk
@@ -403,6 +441,11 @@ def build_combined_growth(
 
     combined = df.merge(summary, on="ticker", how="inner")
     combined = combined.drop(columns=["price"], errors="ignore")
+
+    # Sample before formatting the date: the sampler needs real datetimes.
+    daily_rows = len(combined)
+    combined = _sample_price_history(combined, sampling)
+
     combined["stock_price_date"] = combined["stock_price_date"].dt.strftime("%Y-%m-%d")
 
     # Keep only per-row facts. Columns that are constant for a run (fetch_time,
@@ -412,9 +455,10 @@ def build_combined_growth(
     combined = combined.drop(columns=REDUNDANT_HISTORY_COLUMNS, errors="ignore")
 
     atomic_write_csv(combined, output_path)
+    kept = f"{len(combined) / daily_rows:.0%} of daily" if daily_rows else "empty"
     print(
-        f"\nCombined growth history: {len(combined):,} rows for "
-        f"{len(summary):,} tickers -> {output_path}"
+        f"\nCombined growth history ({sampling}): {len(combined):,} rows for "
+        f"{len(summary):,} tickers, {kept} -> {output_path}"
     )
     return output_path
 
@@ -443,6 +487,10 @@ def analyze_stocks(
             "endpoint_window": settings.endpoint_window,
             "max_data_age_days": settings.max_data_age_days,
             "asset_types": settings.asset_types,
+            # The history table's row semantics depend on these, so a consumer
+            # cannot interpret it from the rows alone.
+            "include_price_history": settings.include_price_history,
+            "price_history_sampling": settings.price_history_sampling,
             "windows": settings.windows,
         },
     )
@@ -548,7 +596,14 @@ def analyze_stocks(
         print(f"Wrote {len(result)} rows to: {output_path}")
 
     if settings.include_price_history:
-        combined_path = build_combined_growth(df, results, cfg.eod_csv, abbreviations, run_id)
+        combined_path = build_combined_growth(
+            df,
+            results,
+            cfg.eod_csv,
+            abbreviations,
+            run_id,
+            sampling=settings.price_history_sampling,
+        )
         outputs["combined"] = {"path": combined_path}
     else:
         # Remove any history published by an earlier run that had it enabled.

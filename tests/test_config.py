@@ -90,3 +90,16 @@ def test_shipped_configs_all_load():
         assert os.path.isabs(cfg.data_dir)
         assert cfg.growth_labels
         assert cfg.analysis.min_coverage > 0
+
+
+def test_price_history_sampling_defaults_to_weekly(tmp_path, monkeypatch):
+    write_config(tmp_path, monkeypatch, BASE)
+    assert load_config("US", "stocks").analysis.price_history_sampling == "weekly"
+
+
+def test_unknown_price_history_sampling_rejected(tmp_path, monkeypatch):
+    """A typo must fail at load, not silently publish 5x the rows."""
+    body = {"config": dict(BASE["config"], analysis={"price_history_sampling": "fortnightly"})}
+    write_config(tmp_path, monkeypatch, body)
+    with pytest.raises(ValueError, match="price_history_sampling must be one of"):
+        load_config("US", "stocks")

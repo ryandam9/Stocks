@@ -694,7 +694,7 @@ unique and safe as filenames and SQLite identifiers.
 |---|---|
 | `<prefix>_eod.csv` | Full price history, one row per ticker per day |
 | `<prefix>_eod_growth_<label>.csv` | Qualifying tickers for one window, with diagnostics |
-| `<prefix>_eod_growth.csv` | Daily price history for every ticker that grew in any window, with `growth_count` and `growth_periods` |
+| `<prefix>_eod_growth.csv` | Sampled price history for every ticker that grew in any window, with `growth_count` and `growth_periods` |
 | `<prefix>_error.csv` | Tickers that returned no data, with error type |
 | `<prefix>_fetch_manifest.json` | Fetch provenance: run id, requested/succeeded counts, success ratio, `data_as_of` |
 | `<prefix>_analysis_manifest.json` | Analysis provenance: run id, code revision, thresholds, funnel counts, and the `source_run_id` of the fetch that produced the price file |
@@ -740,22 +740,53 @@ consistent_growth_stocks        152 rows
 us.db                          0.83 MB
 ```
 
-Daily price history for matched tickers is **not published by default**. It is
-useful only for charting and was ~99% of the file: 438,643 rows against ~3,000
-rows of actual results. Enable it per config if you want it:
+Price history for matched tickers **is published**, sampled weekly. Daily
+history was ~94% of the file — 441,250 rows against ~3,000 rows of actual
+results — and a chart does not need every session, so only the last trading
+day of each week is kept:
 
 ```yaml
 analysis:
-  include_price_history: true    # adds <prefix>_growth, ~33 MB for US stocks
+  include_price_history: true
+  price_history_sampling: weekly   # daily | weekly | semi_monthly | month_end
 ```
 
-Turning it back off removes the table and its CSV on the next run, so a stale
-copy is never served alongside fresh results.
+Every mode keeps the **last trading day** of its period, so the series always
+ends on the newest close. Measured on the US universe:
+
+| Mode | rows/ticker | history rows | `us.db` |
+|---|---|---|---|
+| `daily` | 251 | 441,250 | ~36 MB |
+| `weekly` | 52 | 93,180 | **7.6 MB** |
+| `semi_monthly` | 25 | 43,984 | ~4 MB |
+| `month_end` | 13 | 22,870 | ~2.5 MB |
+| off | — | — | 0.86 MB |
+
+**Why not the 1st, 15th and last of each month?** It sounds denser — 36 rows a
+ticker — but a month's last trading day and the next month's first are the
+*same consecutive session*, true for 12 of 12 boundaries in the last year. So a
+third of those points are near-duplicates a day apart, and the scheme tracks
+the daily line *worse* than weekly does despite storing more of them: measured
+over 300 matched tickers, worst-case deviation from the daily series was 14.1%
+against weekly's 11.9%. Fixed calendar anchors are awkward anyway — the 1st was
+a trading day in only 6 of 13 months, the 15th in 8 of 13.
+
+Two caveats for anyone charting from this table:
+
+- It stores `adj_close` alongside the raw OHLC. **Chart the adjusted column**,
+  or splits and dividends appear as cliffs the holder never experienced.
+- The chart will not tie out exactly with `pct_change` in the per-window
+  tables. Those use a 3-day median at each endpoint (`endpoint_window`), not a
+  single close, so the reported percentage is deliberately not the ratio of the
+  two endpoints you can see here.
+
+Setting `include_price_history: false` removes the table and its CSV on the
+next run, so a stale copy is never served alongside fresh results.
 
 Two further size measures apply when it *is* enabled: the history table stores
 only per-row facts (values constant for a run — `fetch_time`, `price_basis`,
 `fetch_run_id`, `run_id` — live in the manifest, and `name` is joinable from
-any per-window table, rather than being repeated on every daily row), and the
+any per-window table, rather than being repeated on every row), and the
 database is `VACUUM`ed before publication, since bulk inserts otherwise leave
 roughly half the file as free pages.
 

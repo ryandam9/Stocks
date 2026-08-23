@@ -4,6 +4,7 @@ from conftest import make_series
 
 from analysis import (
     MAX_STALENESS_DAYS,
+    _sample_price_history,
     compute_window_growth,
     load_price_data,
 )
@@ -162,3 +163,91 @@ def test_missing_required_column_raises(tmp_path):
 def test_missing_file_raises(tmp_path):
     with pytest.raises(FileNotFoundError):
         load_price_data(str(tmp_path / "nope.csv"))
+
+
+# ------------------------------------------------------------ price history sampling
+
+
+def history_frame(dates, tickers=("AAA",)):
+    return pd.DataFrame(
+        [
+            {"ticker": t, "stock_price_date": pd.Timestamp(d), "adj_close": 10.0 + i}
+            for t in tickers
+            for i, d in enumerate(dates)
+        ]
+    )
+
+
+def kept_dates(frame, mode):
+    out = _sample_price_history(frame, mode)
+    return [d.strftime("%Y-%m-%d") for d in out["stock_price_date"]]
+
+
+def test_weekly_sampling_keeps_the_last_session_of_each_week():
+    """The last, not the first: a chart has to end on the newest close."""
+    dates = [
+        "2026-01-05", "2026-01-06", "2026-01-07", "2026-01-08", "2026-01-09",
+        "2026-01-12", "2026-01-13", "2026-01-14", "2026-01-15", "2026-01-16",
+        "2026-01-19", "2026-01-20",
+    ]
+    assert kept_dates(history_frame(dates), "weekly") == [
+        "2026-01-09", "2026-01-16", "2026-01-20",
+    ]
+
+
+def test_sampling_is_per_ticker():
+    """One ticker's calendar must not decide which rows another keeps."""
+    frame = pd.concat([
+        history_frame(["2026-01-05", "2026-01-09"], tickers=("AAA",)),
+        history_frame(["2026-01-06"], tickers=("BBB",)),
+    ])
+    out = _sample_price_history(frame, "weekly")
+    assert {(r.ticker, r.stock_price_date.strftime("%Y-%m-%d")) for r in out.itertuples()} == {
+        ("AAA", "2026-01-09"),
+        ("BBB", "2026-01-06"),
+    }
+
+
+def test_month_boundary_sessions_are_not_stored_twice():
+    """The flaw that ruled out first/fifteenth/last-of-month sampling.
+
+    A month's last trading day and the next month's first are consecutive
+    sessions -- true for 12 of 12 month boundaries in the last year of US
+    data. Weekly buckets them by week, so it never stores two points a single
+    day apart and calls it two samples.
+    """
+    kept = kept_dates(history_frame(["2026-01-29", "2026-01-30", "2026-02-02"]), "weekly")
+    assert kept == ["2026-01-30", "2026-02-02"]  # Friday, then the following Monday
+
+
+@pytest.mark.parametrize(
+    "mode,expected",
+    [
+        ("weekly", ["2026-01-09", "2026-01-16", "2026-01-20", "2026-02-02"]),
+        ("semi_monthly", ["2026-01-09", "2026-01-20", "2026-02-02"]),
+        ("month_end", ["2026-01-20", "2026-02-02"]),
+    ],
+)
+def test_each_mode_keeps_its_period_ends(mode, expected):
+    dates = ["2026-01-05", "2026-01-09", "2026-01-16", "2026-01-20", "2026-02-02"]
+    assert kept_dates(history_frame(dates), mode) == expected
+
+
+def test_daily_is_a_passthrough():
+    dates = ["2026-01-05", "2026-01-09", "2026-01-16"]
+    frame = history_frame(dates)
+    assert kept_dates(frame, "daily") == dates
+    assert _sample_price_history(frame, "daily") is frame
+
+
+def test_every_mode_ends_on_the_newest_close():
+    """Whatever the mode, the last row is the most recent session."""
+    dates = ["2026-01-05", "2026-01-09", "2026-01-16", "2026-01-20", "2026-02-02"]
+    for mode in ("daily", "weekly", "semi_monthly", "month_end"):
+        assert kept_dates(history_frame(dates), mode)[-1] == "2026-02-02", mode
+
+
+def test_sampling_an_empty_frame_is_safe():
+    """No qualifying ticker is an ordinary outcome, not an error."""
+    empty = history_frame(["2026-01-05"]).iloc[0:0]
+    assert _sample_price_history(empty, "weekly").empty

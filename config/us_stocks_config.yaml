@@ -29,10 +29,20 @@ config:
     # lines and notes alongside common stock. None of those are ordinary
     # equity exposure, so a "stocks" screen takes common_stock only.
     asset_types: [common_stock]
-    # Publish daily price history for matched tickers as well as the screen
-    # results. Off by default: it is ~99% of the database size and is only
-    # useful for charting. Screen results are unaffected either way.
-    include_price_history: false
+    # Publish price history for matched tickers as well as the screen results,
+    # for charting. Screen results are unaffected either way.
+    include_price_history: true
+    # How densely to sample it. Each mode keeps the last trading day of the
+    # period, so the series always ends on the newest close.
+    #   daily        every session (~251 rows/ticker, ~94% of the database)
+    #   weekly       last session of each week (~53 rows)
+    #   semi_monthly last session of each half-month (~25 rows)
+    #   month_end    last session of each month (~13 rows)
+    # Weekly is the default: 5x smaller than daily, and it tracks the daily
+    # line more closely than the denser first/fifteenth/last-of-month sampling
+    # (11.9% vs 14.1% worst-case deviation), because month anchors cluster --
+    # a month's last session and the next month's first are one day apart.
+    price_history_sampling: weekly
     windows:
       - {months: 12, label: 1_year, threshold: 25.0}
       - {months: 6, label: 6_months, threshold: 25.0}
