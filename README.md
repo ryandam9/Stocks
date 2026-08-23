@@ -412,7 +412,10 @@ repointed at the new revision. What you do not want to see is anything
 destroying the VPC, the ECR repository or the log groups.
 
 Changing `data_bucket` or `alert_email` means editing `infra/terraform.tfvars`,
-which is gitignored — see [`infra/README.md`](infra/README.md).
+which is gitignored. It and `infra/backend.hcl` are backed up to the Terraform
+state bucket under `stocks/config/`, since neither can be reconstructed from
+this repository — [`infra/README.md`](infra/README.md) has the copy commands.
+Re-upload after editing; nothing detects drift.
 
 ### Verifying a deployment
 

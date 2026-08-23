@@ -14,8 +14,47 @@ gitignored; `.example` copies of both are committed:
 | `terraform.tfvars` | data bucket name, alert email |
 | `backend.hcl` | state bucket name |
 
+Neither is reconstructable from the repository, so they are backed up to S3 —
+see below.
+
 The account ID appears in neither: IAM ARNs resolve it at plan time through
 `aws_caller_identity`.
+
+### Where they are kept instead
+
+Both live in the Terraform state bucket under `stocks/config/`, beside the
+state file itself.
+
+That adds no exposure. **The state file already contains all three values** —
+the alert email, the data bucket name and the account ID — because Terraform
+records resource attributes verbatim. Protecting the inputs more carefully than
+the state they produce would be theatre. The bucket is private (an anonymous
+GET returns 403), versioned, AES256-encrypted, and has public access fully
+blocked.
+
+```bash
+STATE=s3://<state-bucket>/stocks/config
+
+# after changing either file
+aws s3 cp terraform.tfvars $STATE/ --region <state-bucket-region>
+aws s3 cp backend.hcl      $STATE/ --region <state-bucket-region>
+
+# on a new machine, before terraform init
+aws s3 cp $STATE/ . --recursive --region <state-bucket-region>
+```
+
+Two things to know:
+
+- **`backend.hcl` cannot bootstrap itself.** It is the file that says where the
+  state bucket is, so you need the bucket name before you can fetch it. Keep
+  that one name somewhere you will find it; everything else follows from it.
+- **These copies do not sync themselves.** Nothing detects drift between the
+  local file and the stored one, so re-upload as part of changing them — the
+  same discipline as running `terraform apply` after an edit.
+
+The state bucket's region may differ from `var.region`; ours holds unrelated
+state from other projects and predates this stack, which is why
+`infra/bootstrap` does not manage it.
 
 ## First run
 
