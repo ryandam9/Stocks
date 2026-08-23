@@ -17,9 +17,20 @@ locals {
       cpu      = 512
       memory   = 4096
       database = "us.db"
-      # 20:00 Melbourne. The most recent completed US session is the previous
-      # US calendar day, which is what a run at this hour screens.
-      cron = "cron(0 20 * * ? *)"
+      # 09:30 Melbourne, Tue-Sat, which covers Monday-Friday US sessions.
+      #
+      # Not 07:00, which is when the ASX task runs. Melbourne and New York are
+      # 14-16 hours apart depending on which DST regimes are active, and the
+      # gap moves with US DST independently of Melbourne's. At 07:00 Melbourne
+      # the US market is still open from early November to late March -- 15:00
+      # EST -- and fetch_prices requests through the exchange's current date,
+      # so the provider can return a partial in-progress bar and latest_price
+      # becomes an intraday quote rather than a close.
+      #
+      # 09:30 is 17:30 ET at the worst point of the year, comfortably after the
+      # 16:00 close in every DST combination. The ~63 minute run still finishes
+      # before 10:35 local.
+      cron = "cron(30 9 ? * TUE-SAT *)"
     }
     asx = {
       exchange        = "ASX"
@@ -27,12 +38,19 @@ locals {
       cpu             = 512
       memory          = 2048
       database        = "asx.db"
+      # 07:15 Melbourne, Tue-Sat, covering Monday-Friday ASX sessions.
       # Staggered so the short run is not queued behind the US image pull.
-      cron = "cron(15 20 * * ? *)"
+      #
+      # The hour suits ASX well: the market opens at 10:00 local, so a 07:15
+      # run is clear of any in-progress session and the newest close is the
+      # previous trading day's.
+      cron = "cron(15 7 ? * TUE-SAT *)"
     }
   }
 
   # Melbourne observes daylight saving. An IANA zone tracks the transitions;
-  # a UTC cron would drift an hour twice a year.
+  # a UTC cron would drift an hour twice a year. Note this pins the schedule to
+  # Melbourne local time only -- it does not keep the gap to the New York
+  # close constant, since that gap moves with US DST independently.
   timezone = "Australia/Melbourne"
 }

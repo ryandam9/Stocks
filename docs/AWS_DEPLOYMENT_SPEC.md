@@ -4,7 +4,7 @@
 **Date:** 2026-08-23
 **Target account:** supplied via `terraform.tfvars` (not committed)
 **Target region:** `ap-southeast-2` (Sydney)
-**Schedule:** Daily, 20:00 `Australia/Melbourne`
+**Schedule:** Tue–Sat, `Australia/Melbourne` — ASX 07:15, US 09:30
 
 ---
 
@@ -105,8 +105,8 @@ Two consequences, both of which the design absorbs rather than fights:
   more. §10 is priced on the Fargate figures, not the host ones.
 
 Nothing else is affected. There is no Fargate task timeout to exceed, and a US
-run starting at 20:00 and finishing around 21:05 collides with nothing — the
-ASX schedule at 20:15 is an independent task.
+run starting at 09:30 and finishing around 10:35 collides with nothing — the
+ASX schedule at 07:15 is an independent task that has already finished.
 
 ---
 
@@ -160,7 +160,7 @@ Two corrections, one of them load-bearing:
 directly and handles the transitions:
 
 ```hcl
-schedule_expression          = "cron(0 20 * * ? *)"
+schedule_expression          = "cron(30 9 ? * TUE-SAT *)"
 schedule_expression_timezone = "Australia/Melbourne"
 ```
 
@@ -212,14 +212,14 @@ flowchart TB
         ECR[("ECR<br/>stocks:latest<br/>366 MB")]
 
         subgraph Sched["EventBridge Scheduler"]
-            SCH1["stocks-us<br/>cron(0 20 * * ? *)<br/>Australia/Melbourne"]
-            SCH2["stocks-asx<br/>cron(15 20 * * ? *)<br/>Australia/Melbourne"]
+            SCH1["stocks-us<br/>cron(30 9 ? * TUE-SAT *)<br/>Australia/Melbourne"]
+            SCH2["stocks-asx<br/>cron(15 7 ? * TUE-SAT *)<br/>Australia/Melbourne"]
         end
 
         subgraph VPC["VPC · public subnet · egress-only SG"]
             subgraph ECS["ECS Cluster · Fargate"]
-                T1["Task: US<br/>1 vCPU / 4 GB<br/>~4 min"]
-                T2["Task: ASX<br/>0.5 vCPU / 2 GB<br/>~1 min"]
+                T1["Task: US<br/>0.5 vCPU / 4 GB<br/>~63 min"]
+                T2["Task: ASX<br/>0.5 vCPU / 2 GB<br/>~7 min"]
             end
         end
 
@@ -246,73 +246,77 @@ flowchart TB
     ALARM & EVR --> SNS --> MAIL
 ```
 
-### 4.1 Why the two schedules are 15 minutes apart
+### 4.1 Why the two schedules are two hours apart
 
-Both could run at 20:00. Staggering to 20:00 and 20:15 means the ASX run — the
-short, cheap one — is not queued behind a US image pull, and the two produce
-cleanly separated log streams for the heartbeat alarms. There is no hard
-dependency between them.
+Not a stagger for capacity — the two markets close at different times relative
+to Melbourne, and each task runs when *its* exchange has settled. §5.1 has the
+arithmetic. There is no dependency between them; either can fail without
+affecting the other.
 
 ---
 
 ## 5. Scheduling and data availability
 
-The 8 PM Melbourne slot needs checking against both markets' close times,
-because a screen that runs before the data exists exits 2 and publishes
-nothing.
+| Task | Melbourne local | Days |
+|---|---|---|
+| `stocks-asx` | 07:15 | Tue–Sat |
+| `stocks-us` | 09:30 | Tue–Sat |
+
+**Tue–Sat, not Mon–Fri.** A run screens the *previous* session in both markets,
+so Tuesday through Saturday is what covers Monday through Friday. A Monday run
+would re-screen Friday's data; a Sunday one would do nothing new.
 
 ```mermaid
 gantt
-    title A single Melbourne day (AEST, UTC+10)
+    title Melbourne local time, one weekday
     dateFormat HH:mm
     axisFormat %H:%M
 
-    section ASX
-    Trading session (10:00-16:00)   :done, asx, 10:00, 6h
-    EOD available                   :milestone, 16:30, 0m
-
-    section US (prior session)
-    US close 16:00 ET = 06:00 Melb  :milestone, 06:00, 0m
-    EOD available                   :milestone, 07:00, 0m
+    section Markets
+    US session (prev day, ends 06:00-08:00 local) :done, us, 00:00, 7h
+    ASX session (10:00-16:00)                     :done, asx, 10:00, 6h
 
     section Pipeline
-    US run    (~4 min)              :crit, 20:00, 12m
-    ASX run   (~1 min)              :crit, 20:15, 6m
+    ASX run  (~7 min)                             :crit, 07:15, 20m
+    US run   (~63 min)                            :crit, 09:30, 63m
 ```
 
-**ASX.** The session closes at 16:00 Melbourne. A 20:00 run is four hours
-clear, and same-day ASX EOD data is published well before then.
+### 5.1 Why the two differ by two hours
 
-**US.** At 20:00 Melbourne on day *D*, the most recent completed US session is
-*D−1* in US calendar terms — the NYSE closed at 16:00 ET, which is roughly
-06:00–08:00 Melbourne on *D*, depending on the two DST offsets. So a run on *D*
-screens US data stamped *D−1*. That is expected and correct; it is exactly what
-today's manual runs produce (`us.db` currently has `data_as_of = 2026-08-21`
-from a run on 2026-08-22).
+The two tasks have opposite constraints, and one time cannot satisfy both.
 
-**Weekends.** `max_data_age_days: 5` is the guard. Worst case is a Monday
-20:00 Melbourne run, where the last US session was the previous Friday — three
-days back, inside the limit. No weekend day exceeds it.
+**ASX at 07:15.** The ASX opens at 10:00 local, so an early run is clear of any
+in-progress session and the newest close is the previous trading day's. Running
+*later* than 10:00 would risk a partial bar for the day in progress.
 
-**Should weekends run at all?** Saturday and Sunday runs re-screen unchanged
-data and republish an identical database. They are harmless and idempotent, and
-at ~$0.005 per run not worth optimising away. Keeping the schedule at seven
-days a week also means the heartbeat alarm in §8.3 has no weekend exceptions to
-encode. Daily it is.
+**US at 09:30.** Melbourne and New York are 14–16 hours apart, and the gap moves
+with **US** daylight saving independently of Melbourne's — so a fixed Melbourne
+time does not hold a fixed distance from the New York close. Checked across
+every DST combination:
 
-### 5.1 DST transitions
+| Period | Melb / NY | 09:30 Melbourne = | Margin after close |
+|---|---|---|---|
+| Apr–Oct | AEST / EDT | 19:30 ET | +210 min |
+| Oct–Nov | AEDT / EDT | 18:30 ET | +150 min |
+| Nov–Mar | AEDT / EST | 17:30 ET | **+90 min** |
 
-| Date | Melbourne | UTC equivalent of 20:00 |
-|---|---|---|
-| Winter (Apr–Oct) | AEST, UTC+10 | 10:00 UTC |
-| Summer (Oct–Apr) | AEDT, UTC+11 | 09:00 UTC |
+Ninety minutes is the worst case, in the northern winter.
 
-EventBridge Scheduler handles the shift. The transition days themselves are
-benign here: 20:00 is nowhere near the 02:00–03:00 window where a local time can
-be skipped or repeated, so the schedule fires exactly once on every calendar day
-of the year.
+**07:00 was the original request and it does not work for US.** From roughly
+1 November to 28 March, 07:00 Melbourne is 15:00 EST — the US session is still
+running. `fetch_prices.py` requests through the *exchange's* current date, so
+the provider can return a partial in-progress bar, and `latest_price` becomes
+an intraday quote rather than a close. The screen would then report a
+percentage change measured against a mid-session price. Note the failure would
+have appeared ten weeks after the schedule was set, when New York switched to
+EST, not when it was configured.
 
----
+### 5.2 Staleness
+
+`max_data_age_days: 5` is the guard, and no scheduled slot comes close to it.
+The largest gap is a Tuesday run reaching back to Friday's US session — three
+days, inside the limit. A public holiday on either exchange extends that by a
+day and is still safe.
 
 ## 6. Component specifications
 
@@ -460,7 +464,7 @@ sequenceDiagram
     participant B as S3
     participant L as CloudWatch Logs
 
-    S->>E: RunTask (20:00 Australia/Melbourne)
+    S->>E: RunTask (Tue-Sat, Australia/Melbourne)
     E->>R: pull stocks:latest
     R-->>E: image (366 MB, ~15 s)
     E->>C: start, awsvpc ENI + public IP
@@ -499,7 +503,7 @@ each needing a different detector.
 
 ```mermaid
 flowchart TD
-    START["Scheduled fire<br/>20:00 Melbourne"] --> RAN{"Did a task<br/>start?"}
+    START["Scheduled fire<br/>Tue-Sat, Melbourne"] --> RAN{"Did a task<br/>start?"}
 
     RAN -->|No| H["Heartbeat alarm<br/>no 'Uploaded to' in 24 h"]
     RAN -->|Yes| EXIT{"Container<br/>exit code"}
@@ -713,7 +717,7 @@ resource "aws_scheduler_schedule" "us" {
     maximum_window_in_minutes = 15
   }
 
-  schedule_expression          = "cron(0 20 * * ? *)"
+  schedule_expression          = "cron(30 9 ? * TUE-SAT *)"
   schedule_expression_timezone = "Australia/Melbourne"   # DST-aware — see D2
 
   target {
@@ -746,7 +750,7 @@ resource "aws_scheduler_schedule" "us" {
 
 `FLEXIBLE` with a 15-minute window is intentional: nothing downstream depends
 on the exact minute, and it lets AWS spread the invocation. Set it to `OFF` if
-you later want the run pinned to 20:00 precisely.
+you later want a run pinned to its exact minute.
 
 ### 12.2 The egress-only security group
 
@@ -778,8 +782,8 @@ resource "aws_security_group" "egress_only" {
 | 1 | `terraform apply` the stack | **Done** — 43 resources, 0 destroyed |
 | 2 | Push the image | **Done** — `latest` and `git-<sha>`, ~124 MB compressed |
 | 3 | Run each task manually | **Done** — both exit 0, both databases in S3, all four alarms `OK` |
-| 4 | Force a failure and confirm an email arrives | **Outstanding** — needs the SNS subscription confirmed first |
-| 5 | Set `schedule_enabled = true` | Outstanding — three consecutive nights green |
+| 4 | Force a failure and confirm an email arrives | **Done** — subscription confirmed; a `publish` job on an empty task exited 1 in 75 s through the real EventBridge rule |
+| 5 | Set `schedule_enabled = true` | **Done** — both schedules ENABLED. Watch three consecutive runs |
 | 6 | Decommission the local cron, if any | — |
 
 Phase 3 also validated the heartbeat alarm end to end without contriving
