@@ -168,3 +168,69 @@ def test_upload_missing_file_raises(tmp_path, monkeypatch):
     monkeypatch.setitem(__import__("sys").modules, "boto3", fake_boto3)
     with pytest.raises(FileNotFoundError, match="Nothing to upload"):
         pipeline.upload_to_s3(str(tmp_path / "gone.db"), "s3://b")
+
+
+# ------------------------------------------------------- upload is gated on publishing
+
+
+def _run_cli(monkeypatch, job, *extra):
+    """Invoke run.main with every stage stubbed out, recording S3 uploads."""
+    import click.testing
+
+    import run
+
+    uploaded = []
+    monkeypatch.setattr(run, "_sync", lambda *a, **k: None)
+    monkeypatch.setattr(run, "_fetch", lambda *a, **k: None)
+    monkeypatch.setattr(run, "analyze_stocks", lambda *a, **k: None)
+    monkeypatch.setattr(run.pipeline, "publish", lambda cfg: cfg.db_path)
+    monkeypatch.setattr(
+        run.pipeline,
+        "upload_to_s3",
+        lambda path, bucket, region=None: uploaded.append(bucket) or f"s3://x/{job}",
+    )
+
+    result = click.testing.CliRunner().invoke(
+        run.main,
+        [job, "--exchange", "US", "--instrument-type", "stocks", *extra],
+        standalone_mode=False,
+    )
+    return result, uploaded
+
+
+@pytest.mark.parametrize("job", ["sync", "fetch"])
+def test_non_publishing_jobs_never_upload(job, monkeypatch):
+    """A job that builds no database must not republish a stale one.
+
+    `sync` and `fetch` leave whatever database an earlier run wrote in place.
+    Uploading it would send results stamped with that run's run_id and
+    data_as_of, presented as though this run had produced them.
+    """
+    monkeypatch.setenv("S3_BUCKET", "s3://example-bucket")
+    monkeypatch.setenv("S3_AUTO_UPLOAD", "true")
+
+    result, uploaded = _run_cli(monkeypatch, job)
+
+    assert uploaded == [], f"{job} uploaded a database it did not build"
+    assert result.exit_code == 0
+
+
+@pytest.mark.parametrize("job", ["analyze", "publish", "all"])
+def test_publishing_jobs_still_upload(job, monkeypatch):
+    """The guard must not break the jobs that do build a database."""
+    monkeypatch.setenv("S3_BUCKET", "s3://example-bucket")
+    monkeypatch.setenv("S3_AUTO_UPLOAD", "true")
+
+    _, uploaded = _run_cli(monkeypatch, job)
+
+    assert uploaded == ["s3://example-bucket"]
+
+
+def test_explicit_upload_on_a_non_publishing_job_is_an_error(monkeypatch):
+    """--upload asks for something `sync` cannot do; say so rather than no-op."""
+    monkeypatch.setenv("S3_BUCKET", "s3://example-bucket")
+
+    result, uploaded = _run_cli(monkeypatch, "sync", "--upload")
+
+    assert uploaded == []
+    assert result.exit_code != 0

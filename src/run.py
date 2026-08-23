@@ -28,6 +28,11 @@ from universe import default_asset_type_for, refresh_universe, sync_universe
 
 EXIT_OK, EXIT_ERROR, EXIT_STALE, EXIT_PARTIAL = 0, 1, 2, 3
 
+# Jobs that build a database. Only these have anything to upload; the upload
+# is gated on membership so a `sync` or `fetch` cannot republish a database
+# left over from an earlier run.
+PUBLISHING_JOBS = ("analyze", "publish", "all")
+
 logger = logging.getLogger(__name__)
 
 
@@ -116,11 +121,18 @@ def main(
             _fetch(cfg, period, batch_size, min_success_ratio, allow_partial)
         if job in ("analyze", "all"):
             analyze_stocks(cfg, allow_stale=allow_stale)
-        if job in ("analyze", "publish", "all"):
+        if job in PUBLISHING_JOBS:
             pipeline.publish(cfg)
 
         # --upload forces publication; S3_AUTO_UPLOAD=true makes it routine.
-        if upload or pipeline.should_auto_upload():
+        # Both are ignored by a job that built nothing: uploading then would
+        # send whatever database an earlier run happened to leave behind,
+        # stamped with that run's run_id and data_as_of.
+        if job not in PUBLISHING_JOBS:
+            if upload:
+                raise RuntimeError(f"--upload given but the {job!r} job builds no database")
+            logger.info(f"Skipping S3 upload (the {job!r} job builds no database)")
+        elif upload or pipeline.should_auto_upload():
             bucket = os.environ.get("S3_BUCKET")
             if not bucket:
                 raise RuntimeError("--upload given but S3_BUCKET is not set")

@@ -696,6 +696,10 @@ def test_readme_documents_only_real_cli_flags():
         real |= set(_re.findall(r"--[a-z][a-z-]+", help_text))
     # Flags owned by the shell wrappers and the universe CLI.
     real |= {"--upload", "--allow-stale", "--prune", "--help"}
+    # Docker's own flags, from the Docker section. A different namespace: this
+    # test guards against documenting project flags that do not exist, and
+    # cannot verify third-party ones.
+    real |= {"--user", "--platform", "--rm", "--entrypoint", "--profile", "--no-deps"}
 
     documented = set(_re.findall(r"`(--[a-z][a-z-]+)[ `]", readme))
     unknown = documented - real

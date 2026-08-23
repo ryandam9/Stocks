@@ -605,11 +605,11 @@ write. Three small items are worth addressing, none blocking:
 
 | # | Item | Severity | Detail |
 |---|---|---|---|
-| 1 | `sync` and `fetch` jobs also upload | Low | The upload block in `run.py` runs for every job, not just `publish`/`all`. Running `sync` alone re-uploads the *existing* database. Observed directly on 2026-08-23. Harmless for `all`, but it means a partial job can touch S3. Gate the upload on the job having published. |
+| 1 | `sync` and `fetch` jobs also upload | ~~Low~~ **Fixed** | The upload block in `run.py` ran for every job, so `sync` alone re-uploaded the *existing* database — one stamped with an earlier run's `run_id` and `data_as_of`. Now gated on `PUBLISHING_JOBS`; `--upload` on a non-publishing job is an error rather than a silent no-op. |
 | 2 | No `--platform` guard | Low | An arm64 build fails on Fargate x86 at task start with an exec format error. Document in the deploy runbook, or pin `--platform linux/amd64` in a Makefile target. |
 | 3 | `min_success_ratio` default 0.95 | Info | The US fetch reliably loses 1–3 tickers to provider rate limiting (1/5750 on the last three runs). Well inside the threshold, but if the provider degrades, exit 3 is the designed response and the alarm in §8.1 will report it. |
 
-Item 1 is the only one worth a code change before go-live.
+Item 1 was the only one worth a code change before go-live, and is done.
 
 ---
 
@@ -706,7 +706,7 @@ resource "aws_security_group" "egress_only" {
 
 | Phase | Work | Exit criteria |
 |---|---|---|
-| 0 | Fix §11 item 1; enable S3 versioning | Upload gated on publish; versioning on |
+| 0 | ~~Fix §11 item 1~~ (done); enable S3 versioning | Upload gated on publish ✓; versioning on |
 | 1 | Terraform network, ECR, IAM | `terraform apply` clean; image pushed |
 | 2 | Task definitions; run each **manually** via `aws ecs run-task` | Both exit 0; `us.db`/`asx.db` timestamps update in S3 |
 | 3 | Observability — log groups, filters, alarms, SNS | Force a failure (bad bucket name) and confirm the email arrives |
