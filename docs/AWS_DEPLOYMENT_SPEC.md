@@ -52,8 +52,12 @@ already stable and documented, which the alarm design in §8 depends on:
 ### 2.1 Measured behaviour
 
 All figures below were measured on 2026-08-23 against the live provider, using
-the same code the container runs. They drive the task sizing in §6.2 and the
-cost model in §10 — none of it is estimated from first principles.
+the same code the container runs.
+
+**These are host figures, and they do not transfer to Fargate.** See §2.2: the
+same US run takes 63 minutes on Fargate against 3m42s here. They are kept
+because they are what memory sizing is derived from; runtime and cost come
+from the Fargate measurements instead.
 
 | Stage | US (5750 tickers) | ASX (402 tickers) |
 |---|---|---|
@@ -75,6 +79,34 @@ Artefact sizes:
 The ASX `sync` figure is the one that surprises: ASX has no bulk symbol
 directory, so it does 404 per-ticker provider lookups. It dominates the ASX
 run at 43 s of the ~60 s total.
+
+### 2.2 The same runs on Fargate
+
+Measured 2026-08-23 from the first real task runs, billed duration taken from
+`pullStartedAt` to `stoppedAt`:
+
+| | Host | Fargate | Ratio |
+|---|---|---|---|
+| US `all` | 3 m 42 s | **63.3 min** | 17x |
+| ASX `all` | ~1 min | **6.7 min** | 6.7x |
+
+Both exited 0 and fetched the same data — 5749/5750 US tickers, identical to
+the host run. **Zero `YFRateLimitError` in 63 minutes**: the provider is not
+throttling with errors, it simply answers AWS egress far more slowly than a
+residential connection. US batches of 100 tickers took ~63 s each on Fargate
+against ~3.5 s on the host.
+
+Two consequences, both of which the design absorbs rather than fights:
+
+- **Sizing.** The run is network-bound, not compute-bound, so vCPU buys
+  nothing. The US task is 0.5 vCPU: the extra 0.5 would spend an hour idle at
+  double the rate. Memory stays at 4 GB, sized from the 950 MB measured peak.
+- **Cost.** Fargate bills wall-clock per second, so a 17x longer run costs 17x
+  more. §10 is priced on the Fargate figures, not the host ones.
+
+Nothing else is affected. There is no Fargate task timeout to exceed, and a US
+run starting at 20:00 and finishing around 21:05 collides with nothing — the
+ASX schedule at 20:15 is an independent task.
 
 ---
 
@@ -310,14 +342,14 @@ nearest valid Fargate CPU/memory combination.
 
 | | US | ASX |
 |---|---|---|
-| CPU | 1024 (1 vCPU) | 512 (0.5 vCPU) |
+| CPU | **512 (0.5 vCPU)** | 512 (0.5 vCPU) |
 | Memory | 4096 MB | 2048 MB |
 | Measured peak RSS | 950 MB | ~131 MB |
 | Headroom | 4.3× | 15× |
 | Ephemeral storage | 20 GiB (default) | 20 GiB (default) |
 | Peak disk use | ~210 MB | ~15 MB |
 | Command | `all --exchange US --instrument-type stocks --period 365` | `all --exchange ASX --instrument-type etf --period 365` |
-| Expected runtime | ~4 min | ~1 min |
+| Measured runtime on Fargate | ~63 min | ~7 min |
 
 Both use `requiresCompatibilities: ["FARGATE"]`, `networkMode: awsvpc`, and
 `operatingSystemFamily: LINUX` / `cpuArchitecture: X86_64`.
@@ -325,7 +357,12 @@ Both use `requiresCompatibilities: ["FARGATE"]`, `networkMode: awsvpc`, and
 The generous memory headroom is deliberate: the fetch stage's peak scales with
 universe size, and the US universe grows as the symbol directory does. A task
 killed by the OOM killer produces exit code 137 and no output, which is a bad
-failure mode to economise into. The cost of the extra 2 GB is under $0.02/month.
+failure mode to economise into.
+
+CPU is deliberately *not* generous, for the opposite reason. §2.2 shows the run
+waits on the network for an hour; a second vCPU would idle alongside the first
+at twice the price. 0.5 vCPU with 4 GB is a valid Fargate combination, and the
+first US run at 1 vCPU cost $2.21/month against $1.44 at 0.5.
 
 **Environment:**
 
@@ -573,31 +610,41 @@ the ECR console which commit is actually running.
 
 ---
 
-## 10. Cost estimate
+## 10. Cost
 
 Fargate on-demand, `ap-southeast-2`, at roughly $0.04856/vCPU-hour and
-$0.00532/GB-hour. **Verify current rates against the AWS pricing page before
-committing to these numbers.**
+$0.00532/GB-hour. **Verify current rates against the AWS pricing page.**
+
+Priced on the measured Fargate durations from §2.2 — 63.3 min for US, 6.7 min
+for ASX — not the host figures. Fargate bills wall-clock per second from image
+pull to task stop, so runtime is the dominant term.
 
 | Item | Basis | Monthly |
 |---|---|---|
-| Fargate — US | 1 vCPU + 4 GB × 4 min × 30 | $0.14 |
-| Fargate — ASX | 0.5 vCPU + 2 GB × 1 min × 30 | $0.02 |
-| Public IPv4 | $0.005/hr × ~2.5 hr | $0.02 |
-| ECR storage | 10 images × 366 MB × $0.10/GB | $0.37 |
-| S3 storage | ~1 MB live + 30 versions | $0.01 |
+| Fargate — US | 0.5 vCPU + 4 GB × 63 min × 30 | $1.44 |
+| Fargate — ASX | 0.5 vCPU + 2 GB × 7 min × 30 | $0.12 |
+| Public IPv4 | $0.005/hr × ~35 hr | $0.18 |
+| ECR storage | 10 images × ~124 MB compressed | $0.12 |
+| S3 storage | ~8 MB live + 30 noncurrent versions | $0.01 |
 | S3 requests | ~60 PUT/month | negligible |
-| CloudWatch Logs | ~10 MB ingest + 30 d retention | $0.05 |
+| CloudWatch Logs | ~20 MB ingest + 30 d retention | $0.05 |
 | CloudWatch Alarms | 4 alarms × $0.10 | $0.40 |
 | SNS | < 100 messages | negligible |
-| Data transfer in | 215 MB/day from provider | **free** |
-| **Total** | | **≈ $1.01/month** |
+| Data transfer in | 215 MB/day from the provider | **free** |
+| **Total** | | **≈ $2.32/month** |
 
-The alarms cost more than the compute. Note what is *absent*: no NAT Gateway
-($43), no EFS ($0.30/GB-month plus throughput), no always-on anything. Data
-transfer *in* from Yahoo is free, which matters because it is 6.5 GB/month.
+An earlier draft of this section said $1.01, priced on the host runtimes before
+any task had run in AWS. The gap is entirely §2.2: the US run is 17x longer on
+Fargate, and Fargate charges by the second.
 
----
+Note what is still absent: no NAT Gateway ($43), no EFS, no always-on anything.
+Data transfer *in* is free, which matters because it is 6.5 GB/month — the
+largest data volume in the system, at no cost.
+
+**Further savings, if it ever matters.** Fargate Spot is ~70% cheaper and this
+workload is an unusually good fit: an interruption costs one day of freshness,
+which the next run repairs completely (§3/D1). That would take the US task to
+roughly $0.43/month. Not applied, because the absolute saving is about a dollar.
 
 ## 11. Application changes required
 
@@ -725,18 +772,26 @@ resource "aws_security_group" "egress_only" {
 
 ## 13. Rollout plan
 
-| Phase | Work | Exit criteria |
+| Phase | Work | Status |
 |---|---|---|
-| 0 | ~~Fix §11 item 1~~ (done); enable S3 versioning | Upload gated on publish ✓; versioning on |
-| 1 | Terraform network, ECR, IAM | `terraform apply` clean; image pushed |
-| 2 | Task definitions; run each **manually** via `aws ecs run-task` | Both exit 0; `us.db`/`asx.db` timestamps update in S3 |
-| 3 | Observability — log groups, filters, alarms, SNS | Force a failure (bad bucket name) and confirm the email arrives |
-| 4 | Enable the two schedules | Three consecutive nights green |
-| 5 | Decommission the local cron, if any | — |
+| 0 | Fix §11 item 1; enable S3 versioning | **Done** — upload gated on publish, versioning and 30-day noncurrent expiry applied |
+| 1 | `terraform apply` the stack | **Done** — 43 resources, 0 destroyed |
+| 2 | Push the image | **Done** — `latest` and `git-<sha>`, ~124 MB compressed |
+| 3 | Run each task manually | **Done** — both exit 0, both databases in S3, all four alarms `OK` |
+| 4 | Force a failure and confirm an email arrives | **Outstanding** — needs the SNS subscription confirmed first |
+| 5 | Set `schedule_enabled = true` | Outstanding — three consecutive nights green |
+| 6 | Decommission the local cron, if any | — |
 
-**Do not skip phase 3's forced failure.** An alarm that has never fired is an
+Phase 3 also validated the heartbeat alarm end to end without contriving
+anything: both `no-upload-in-24h` alarms sat in `ALARM` from creation, because
+`treat_missing_data = "breaching"` correctly reads "no logs at all" as a
+failure, and both cleared to `OK` on the first `Uploaded to s3://` line.
+
+**Do not skip phase 4's forced failure.** An alarm that has never fired is an
 untested alarm, and the failure mode this whole design guards against is the
-silent one.
+silent one. Note that until the SNS email subscription is confirmed it sits in
+`PendingConfirmation` and delivers nothing, so a passing alarm test proves
+nothing about delivery.
 
 ### 13.1 Future work
 

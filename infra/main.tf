@@ -1,14 +1,22 @@
 locals {
   # One entry drives the task definition, log group, schedule, metric filters
-  # and alarms for a universe. Sizing comes from measuring the real stages:
-  # the US fetch peaks at 950 MB over 3m42s, the ASX run at ~131 MB over ~1min.
+  # and alarms for a universe.
+  #
+  # Memory is sized from measured peak RSS: 950 MB for the US fetch, ~131 MB
+  # for ASX. CPU is sized low on purpose -- the run is network-bound, not
+  # compute-bound. On Fargate the US fetch takes ~60 minutes against 3m42s on
+  # a developer machine, with zero rate-limit errors: the provider simply
+  # answers AWS egress more slowly. Since Fargate bills wall-clock per second,
+  # a larger vCPU would buy nothing but a bigger bill for the same waiting.
   universes = {
     us = {
       exchange        = "US"
       instrument_type = "stocks"
-      cpu             = 1024
-      memory          = 4096
-      database        = "us.db"
+      # 0.5 vCPU with 4 GB is a valid Fargate combination; memory keeps its
+      # 4x headroom over the measured peak.
+      cpu      = 512
+      memory   = 4096
+      database = "us.db"
       # 20:00 Melbourne. The most recent completed US session is the previous
       # US calendar day, which is what a run at this hour screens.
       cron = "cron(0 20 * * ? *)"
