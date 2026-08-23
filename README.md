@@ -321,6 +321,165 @@ and `src/pipeline.py` builds the database with the `sqlite3` standard library,
 so the image needs no `sqlite3` CLI, no `sqlite-utils` and no Bash. The shell
 scripts remain for host use and produce byte-identical output.
 
+## Running in AWS
+
+The pipeline runs itself on a schedule in AWS: ECS Fargate in `ap-southeast-2`,
+publishing both databases to S3.
+
+| | |
+|---|---|
+| ASX | Tue–Sat, **07:15** Melbourne (~7 min) |
+| US | Tue–Sat, **09:30** Melbourne (~63 min) |
+
+Tue–Sat because a run screens the *previous* session, so those five days cover
+Monday to Friday. The two differ by two hours because their exchanges settle at
+opposite ends of the Melbourne day — the reasoning, and why 07:00 is wrong for
+US, is in [§5 of the deployment spec](docs/AWS_DEPLOYMENT_SPEC.md).
+
+Infrastructure lives in [`infra/`](infra) as Terraform. Its
+[README](infra/README.md) covers first-time setup; this section is about
+shipping changes to something already running.
+
+### Which kind of change is it?
+
+This is the question that decides everything else.
+
+| You changed | What ships it | Terraform needed? |
+|---|---|---|
+| `src/**` | rebuild + push the image | no |
+| `config/*.yaml`, `config/*.csv` | rebuild + push the image | no |
+| `requirements.lock`, `Dockerfile` | rebuild + push the image | no |
+| `infra/**` — sizing, schedule, alarms | `terraform apply` | yes |
+
+**Config files ship inside the image.** `Dockerfile` does `COPY config/ ./config/`,
+and the Fargate task starts with an empty `/data` every run, so it reads the
+thresholds, windows and universe seeds baked into the image. Editing
+`config/us_stocks_config.yaml` and running `terraform apply` changes nothing —
+you need a new image.
+
+### Shipping a code or config change
+
+```bash
+# 1. Land it. CI runs lint, format, tests, the docker smoke test and
+#    terraform validate on every push to master.
+git push
+
+# 2. Build and push. Get the repository URL from Terraform rather than
+#    hard-coding it -- it contains the account ID.
+REPO=$(terraform -chdir=infra output -raw ecr_repository_url)
+aws ecr get-login-password --region ap-southeast-2 \
+  | docker login --username AWS --password-stdin "${REPO%%/*}"
+
+docker build --platform linux/amd64 \
+  -t "${REPO}:latest" -t "${REPO}:git-$(git rev-parse --short HEAD)" .
+
+docker push "${REPO}:latest"
+docker push "${REPO}:git-$(git rev-parse --short HEAD)"
+```
+
+That is the whole deployment. The task definitions run the `latest` tag, so the
+next scheduled run picks the new image up with no `terraform apply` and no
+task-definition revision.
+
+Two traps, both of which have already caught someone here:
+
+- **`--platform linux/amd64` is not optional.** Fargate is x86; an arm64 image
+  fails at task start with an exec format error and no useful log line.
+- **In zsh, use `${REPO}:latest`, not `$REPO:latest`.** zsh reads `:l` as its
+  lowercase modifier and silently builds a repository called `stocksatest`
+  instead of tagging `stocks:latest`. The push then succeeds against the wrong
+  name.
+
+The `git-<sha>` tag is not used by anything at runtime. It exists so you can
+tell from the ECR console which commit is actually running, and so a rollback
+has something to point at.
+
+### Shipping an infrastructure change
+
+```bash
+cd infra
+terraform plan     # read it -- see the note below
+terraform apply
+```
+
+**Read the plan for `must be replaced` on `aws_ecs_task_definition`.** Changing
+CPU, memory, the command or the environment forces a new revision, which is
+normal and safe: a running task is never disturbed, and the schedule is
+repointed at the new revision. What you do not want to see is anything
+destroying the VPC, the ECR repository or the log groups.
+
+Changing `data_bucket` or `alert_email` means editing `infra/terraform.tfvars`,
+which is gitignored — see [`infra/README.md`](infra/README.md).
+
+### Verifying a deployment
+
+You do not have to wait for the schedule. Run a task by hand:
+
+```bash
+terraform -chdir=infra output run_task_manually   # prints the full command
+```
+
+Then watch it:
+
+```bash
+# exit code -- 0 success, 1 error, 2 stale data, 3 incomplete fetch
+aws ecs describe-tasks --cluster stocks --region ap-southeast-2 \
+  --tasks <task-arn> --query 'tasks[0].[lastStatus,containers[0].exitCode]' --output text
+
+# the line that matters
+aws logs filter-log-events --log-group-name /ecs/stocks/us \
+  --region ap-southeast-2 --filter-pattern '"Uploaded to"' \
+  --query 'events[-1].message' --output text
+```
+
+A healthy run ends with `Uploaded to s3://…`. A run that published locally but
+sent nothing ends with `Skipping S3 upload (…)` — that is a **successful exit
+0**, which is exactly why there is an alarm for it.
+
+Then confirm the artefact actually moved, which is the only check that proves
+the whole chain:
+
+```bash
+aws s3 ls s3://<your-bucket>/ --region ap-southeast-2 | grep -E 'us\.db|asx\.db'
+```
+
+### Knowing when it breaks
+
+Three alarms feed one SNS topic, one email subscription. They cover three
+different failures, because no single detector sees all of them:
+
+| Alarm | Catches |
+|---|---|
+| `stocks-<u>-no-upload-in-24h` | the run never happened, or never finished |
+| `stocks-<u>-upload-skipped` | the run exited 0 but published nothing |
+| EventBridge rules (not alarms) | the task exited non-zero, or never started |
+
+```bash
+aws cloudwatch describe-alarms --region ap-southeast-2 \
+  --alarm-name-prefix stocks --query 'MetricAlarms[].[AlarmName,StateValue]' --output text
+```
+
+A newly created `no-upload-in-24h` alarm sits in `ALARM` until the first
+successful run, which is correct rather than a fault: it treats missing data as
+breaching, because "no logs at all" is precisely the condition it exists to
+detect.
+
+### Rolling back
+
+The task definitions track `latest`, so rolling back means moving that tag:
+
+```bash
+REPO=$(terraform -chdir=infra output -raw ecr_repository_url)
+docker pull "${REPO}:git-<known-good-sha>"
+docker tag  "${REPO}:git-<known-good-sha>" "${REPO}:latest"
+docker push "${REPO}:latest"
+```
+
+No `terraform apply`, and nothing to revert in git unless the bad commit is
+also on `master`. To stop the schedule entirely while you investigate, set
+`schedule_enabled = false` in `infra/terraform.tfvars` and apply; the schedules
+stay defined but stop firing.
+
 ## Common recipes
 
 **Screen US common stock only** — this is the shipped default; no change needed:

@@ -66,3 +66,29 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y shellcheck
           shellcheck scripts/*.sh
+
+  terraform:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # bootstrap is a separate root module with its own provider block, so
+        # validating infra/ alone would not cover it.
+        dir: [infra, infra/bootstrap]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Format check
+        run: terraform -chdir=${{ matrix.dir }} fmt -check -recursive
+
+      - name: Init
+        # -backend=false skips the S3 backend, so this needs no AWS
+        # credentials and no state bucket. Providers still come from the
+        # registry, which is all validate requires.
+        run: terraform -chdir=${{ matrix.dir }} init -backend=false -input=false
+
+      - name: Validate
+        run: terraform -chdir=${{ matrix.dir }} validate
