@@ -39,7 +39,12 @@ variable "image_tag" {
 variable "history_days" {
   description = "Days of price history each run fetches."
   type        = number
-  default     = 365
+  # Must exceed the longest analysis window by enough to reach a session
+  # *before* its anchor. Under return_basis: google_finance a window opens at
+  # the last session on or before the calendar anchor, so a bare 365 leaves
+  # the 1-year anchor with nothing behind it whenever it lands on a weekend or
+  # holiday, and that window silently opens short.
+  default = 400
 }
 
 variable "log_retention_days" {

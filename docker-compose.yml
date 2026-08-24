@@ -45,7 +45,7 @@ services:
     volumes:
       - stocks-data:/data
     environment: *stocks-environment
-    command: ["all", "--exchange", "US", "--instrument-type", "stocks", "--period", "365"]
+    command: ["all", "--exchange", "US", "--instrument-type", "stocks", "--period", "400"]
 
   asx:
     build:
@@ -56,7 +56,7 @@ services:
     volumes:
       - stocks-data:/data
     environment: *stocks-environment
-    command: ["all", "--exchange", "ASX", "--instrument-type", "etf", "--period", "365"]
+    command: ["all", "--exchange", "ASX", "--instrument-type", "etf", "--period", "400"]
 
   # Inspect published results without installing sqlite on the host.
   sqlite:

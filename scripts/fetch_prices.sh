@@ -5,7 +5,7 @@
 # Fetches historical EOD price data from Yahoo Finance via src/fetch_prices.py.
 #   EXCHANGE        Exchange code: US, ASX, NSE, BSE, NYSE, NASDAQ
 #   INSTRUMENT_TYPE Instrument type: stocks, etf
-#   PERIOD_DAYS     Days of history to fetch (default: 365)
+#   PERIOD_DAYS     Days of history to fetch (default: 400)
 #
 # Logs go to logs/fetch_prices_<exchange>_<instrument>.log (rotated) as well as
 # stdout, so no shell redirect is needed.
@@ -14,7 +14,7 @@ set -euo pipefail
 
 usage() {
     echo "Usage: $(basename "$0") <EXCHANGE> <INSTRUMENT_TYPE> [PERIOD_DAYS]" >&2
-    echo "  e.g. $(basename "$0") US stocks 365" >&2
+    echo "  e.g. $(basename "$0") US stocks 400" >&2
     exit 1
 }
 
@@ -24,7 +24,7 @@ fi
 
 EXCHANGE="${1^^}"
 INSTRUMENT="${2,,}"
-PERIOD="${3:-365}"
+PERIOD="${3:-400}"
 
 if ! [[ "$PERIOD" =~ ^[1-9][0-9]*$ ]]; then
     echo "Error: PERIOD_DAYS must be a positive integer, got '$PERIOD'" >&2

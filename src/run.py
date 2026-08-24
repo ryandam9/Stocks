@@ -89,7 +89,11 @@ def _fetch(cfg, period: int, batch_size: int, min_ratio: float, allow_partial: b
 @click.argument("job", type=click.Choice(["sync", "fetch", "analyze", "publish", "all"]))
 @click.option("--exchange", required=True, type=click.Choice(list(EXCHANGE_SUFFIXES), False))
 @click.option("--instrument-type", required=True, type=click.Choice(INSTRUMENTS, False))
-@click.option("--period", type=int, default=365, help="Days of history to fetch")
+# 400, not 365: under return_basis: google_finance a window opens at the last
+# session on or before its calendar anchor, so the 1-year window needs history
+# reaching *past* that anchor. At exactly 365 it opens short whenever the
+# anchor falls on a weekend or holiday.
+@click.option("--period", type=int, default=400, help="Days of history to fetch")
 @click.option("--batch-size", type=int, default=100)
 @click.option("--min-success-ratio", type=float, default=0.95)
 @click.option("--allow-partial", is_flag=True)
