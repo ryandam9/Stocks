@@ -15,7 +15,7 @@ from conftest import make_series
 
 import config as cfg_mod
 from analysis import StaleDataError, analyze_stocks, compute_window_growth
-from config import AnalysisSettings, load_config
+from config import RETURN_BASIS_ROBUST, AnalysisSettings, load_config
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -183,6 +183,7 @@ def test_endpoint_windows_may_not_overlap(build_frame, latest_date):
         min_coverage=0.8,
         endpoint_window=3,
         min_observation_ratio=0.0,
+        return_basis=RETURN_BASIS_ROBUST,
     )
     result, _ = compute_window_growth(
         build_frame(tiny), {"months": 12}, 25.0, settings, latest_date, "US"
@@ -211,6 +212,9 @@ def test_raw_fallback_prices_are_excluded(build_frame, latest_date):
         min_coverage=0.8,
         endpoint_window=1,
         min_observation_ratio=0.0,
+        # The exclusion guards the adjusted series; google_finance screens the
+        # raw close deliberately and does not apply it.
+        return_basis=RETURN_BASIS_ROBUST,
     )
     result, funnel = compute_window_growth(
         build_frame(good, raw), {"months": 12}, 25.0, settings, latest_date, "US"

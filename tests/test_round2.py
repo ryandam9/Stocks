@@ -13,7 +13,13 @@ import analysis
 import config as cfg_mod
 import fetch_prices
 from analysis import _worst_price_basis, compute_window_growth
-from config import AnalysisSettings, growth_schema_sql, load_config, settings_for_window
+from config import (
+    RETURN_BASIS_ROBUST,
+    AnalysisSettings,
+    growth_schema_sql,
+    load_config,
+    settings_for_window,
+)
 from runmeta import atomic_write_csv, atomic_write_text
 from symbol_directory import US_EXCHANGES, classify_security_name, fetch_symbol_directory
 from universe import default_asset_type_for, filter_universe, load_universe, sync_universe
@@ -334,6 +340,9 @@ def test_mixed_price_basis_degrades_to_the_worst(build_frame, latest_date):
         min_coverage=0.8,
         endpoint_window=1,
         min_observation_ratio=0.0,
+        # The degradation gates the adjusted series; google_finance screens the
+        # raw close on purpose and lets every basis through.
+        return_basis=RETURN_BASIS_ROBUST,
     )
     result, funnel = compute_window_growth(
         build_frame(series), {"months": 12}, 25.0, settings, latest_date, "US"

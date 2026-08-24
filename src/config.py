@@ -98,6 +98,27 @@ DEFAULT_DATA_ROOT = os.path.join(PROJECT_ROOT, "data")
 # Window labels become filename fragments and SQLite identifiers.
 _SAFE_LABEL = re.compile(r"[A-Za-z0-9_]+")
 
+# How a window's percentage change is defined.
+#
+# "google_finance" reproduces the number shown on a Google Finance quote page,
+# so the two can be compared directly. Three rules together produce that match,
+# and all three must hold -- each on its own leaves a visible gap:
+#   * single closes at both endpoints, never a median of several days;
+#   * the window starts at the last session *on or before* the calendar anchor,
+#     not the first one after it, which matters whenever the anchor lands on a
+#     weekend or holiday;
+#   * the raw close, which Yahoo already reports split-adjusted but not
+#     dividend-adjusted, exactly as Google Finance charts it.
+#
+# "robust" is the noise-resistant definition: a median of endpoint_window
+# closes at each end, the first session inside the window, and the fully
+# adjusted series so dividends count toward the return. It reads higher than
+# Google Finance on anything with a yield, and that difference is real rather
+# than an error -- it is total return against price return.
+RETURN_BASIS_GOOGLE_FINANCE = "google_finance"
+RETURN_BASIS_ROBUST = "robust"
+RETURN_BASIS = (RETURN_BASIS_GOOGLE_FINANCE, RETURN_BASIS_ROBUST)
+
 # Used when a config file omits the analysis block entirely.
 DEFAULT_WINDOWS = [
     {"months": 12, "label": "1_year", "threshold": 25.0},
@@ -123,8 +144,11 @@ class AnalysisSettings:
     # the 1-year table with its 2-week return.
     min_coverage: float = 0.8
     # Number of trading days median-averaged at each endpoint. 1 restores
-    # single-day behaviour; 3 removes most single-print noise.
+    # single-day behaviour; 3 removes most single-print noise. Ignored under
+    # the "google_finance" return_basis, which is defined on single closes.
     endpoint_window: int = 3
+    # How a window's return is defined. See RETURN_BASIS.
+    return_basis: str = RETURN_BASIS_GOOGLE_FINANCE
     # Any of the eligibility settings below may be overridden per window, which
     # short windows need: a 7-day window holds only ~5 sessions, too few for a
     # 3-day endpoint median at either end.
@@ -462,6 +486,13 @@ def load_config(exchange: str, instrument_type: str) -> StockConfig:
                 f"{', '.join(sorted(PRICE_HISTORY_SAMPLING))}, got {mode!r}"
             )
 
+    if "return_basis" in analysis_raw:
+        basis = analysis_raw["return_basis"]
+        if basis not in RETURN_BASIS:
+            raise ValueError(
+                f"{path}: return_basis must be one of {', '.join(RETURN_BASIS)}, got {basis!r}"
+            )
+
     if "asset_types" in analysis_raw:
         raw_types = analysis_raw["asset_types"]
         # A bare string is iterable, so list() would silently turn
@@ -516,6 +547,8 @@ def load_config(exchange: str, instrument_type: str) -> StockConfig:
         max_data_age_days=int(analysis_raw.get("max_data_age_days", 5)),
         asset_types=list(analysis_raw.get("asset_types", ["common_stock", "etf"])),
         include_price_history=bool(analysis_raw.get("include_price_history", False)),
+        price_history_sampling=str(analysis_raw.get("price_history_sampling", "weekly")),
+        return_basis=str(analysis_raw.get("return_basis", RETURN_BASIS_GOOGLE_FINANCE)),
         windows=list(windows),
     )
 

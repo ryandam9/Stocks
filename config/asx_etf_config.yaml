@@ -8,6 +8,17 @@ config:
   db_path: asx.db
 
   analysis:
+    # How a window's percentage change is defined.
+    #   google_finance  single closes, the last session on or before the
+    #                   calendar anchor, and the raw (split-adjusted,
+    #                   dividend-unadjusted) close -- the number a Google
+    #                   Finance quote page shows, so results can be checked
+    #                   against one directly. endpoint_window does not apply.
+    #   robust          median of endpoint_window closes at each end, the first
+    #                   session inside the window, and the fully adjusted
+    #                   series. Counts dividends, so it reads higher than
+    #                   Google Finance on anything with a yield.
+    return_basis: google_finance
     # Prices are AUD on the ASX. ETFs commonly trade in the A$3-10 range, so
     # a A$10 floor would discard roughly a fifth of the universe.
     min_price: 2.0

@@ -76,7 +76,7 @@ cd /path/to/stocks
 uv run src/universe.py sync US stocks
 
 # 2. Fetch ~1 year of end-of-day prices. Only common stock is requested.
-./scripts/fetch_prices.sh US stocks 365
+./scripts/fetch_prices.sh US stocks 400
 
 # 3. Screen for growth and publish the SQLite database.
 ./scripts/run_analysis.sh US stocks
@@ -128,7 +128,7 @@ cd /path/to/stocks
 uv run src/universe.py enrich ASX etf --prune
 
 # 2. Fetch ~1 year of end-of-day prices.
-./scripts/fetch_prices.sh ASX etf 365
+./scripts/fetch_prices.sh ASX etf 400
 
 # 3. Screen for growth and publish the SQLite database.
 ./scripts/run_analysis.sh ASX etf
@@ -197,8 +197,8 @@ Both universes, refreshed daily, with logs kept:
 
 ```bash
 # crontab -e  — runs after the US close (ASX times differ; adjust to taste)
-30 22 * * 1-5  cd /path/to/stocks && ./scripts/fetch_prices.sh US stocks 365 && ./scripts/run_analysis.sh US stocks
-0  9  * * 1-5  cd /path/to/stocks && ./scripts/fetch_prices.sh ASX etf 365 && ./scripts/run_analysis.sh ASX etf
+30 22 * * 1-5  cd /path/to/stocks && ./scripts/fetch_prices.sh US stocks 400 && ./scripts/run_analysis.sh US stocks
+0  9  * * 1-5  cd /path/to/stocks && ./scripts/fetch_prices.sh ASX etf 400 && ./scripts/run_analysis.sh ASX etf
 ```
 
 Both scripts exit non-zero on failure, so cron will report a bad run rather
@@ -228,7 +228,7 @@ docker compose run --rm us    # US stocks:  same
 ```
 
 **Pass no arguments.** Each service already carries its full command
-(`all --exchange ASX --instrument-type etf --period 365`). Anything you append
+(`all --exchange ASX --instrument-type etf --period 400`). Anything you append
 *replaces* that command rather than adding to it, so `docker compose run --rm us all`
 fails with a usage error — `--exchange` and `--instrument-type` go missing. To
 run one stage, give the whole invocation:
@@ -257,7 +257,7 @@ eval "$(aws configure export-credentials --format env)"
 docker run --rm -v stocks-data:/data -e TZ=UTC \
   -e S3_BUCKET -e S3_REGION -e S3_AUTO_UPLOAD \
   -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN \
-  stocks:dev all --exchange ASX --instrument-type etf --period 365
+  stocks:dev all --exchange ASX --instrument-type etf --period 400
 
 # Individual stages
 docker run --rm -v stocks-data:/data stocks:dev fetch   --exchange US --instrument-type stocks
@@ -492,7 +492,7 @@ stay defined but stop firing.
 
 ```bash
 uv run src/universe.py sync US stocks           # refresh membership + classification
-./scripts/fetch_prices.sh US stocks 365         # fetches only common stock
+./scripts/fetch_prices.sh US stocks 400         # fetches only common stock
 ./scripts/run_analysis.sh US stocks
 ```
 
@@ -509,7 +509,7 @@ That is ~7,400 provider requests not spent on instruments you would discard.
 **Screen ASX ETFs:**
 
 ```bash
-./scripts/fetch_prices.sh ASX etf 365
+./scripts/fetch_prices.sh ASX etf 400
 ./scripts/run_analysis.sh ASX etf
 ```
 
@@ -587,7 +587,7 @@ shell wrappers do not expose:
 
 ```bash
 uv run src/fetch_prices.py  --exchange US --instrument-type stocks \
-    --period 365 --batch-size 100 --min-success-ratio 0.95 --log-file logs/us.log
+    --period 400 --batch-size 100 --min-success-ratio 0.95 --log-file logs/us.log
 uv run src/analysis.py      --exchange US --instrument-type stocks [--allow-stale]
 uv run src/universe.py      sync US stocks          # membership + class (US only)
 uv run src/universe.py      enrich ASX etf [--prune]  # metadata, any market
@@ -598,7 +598,7 @@ Useful flags:
 
 | Flag | Stage | Effect |
 |---|---|---|
-| `--period N` | fetch | Days of history to request (default 365) |
+| `--period N` | fetch | Days of history to request (default 400). Must reach *past* the longest window's anchor, not merely to it — see [How growth is measured](#how-growth-is-measured). |
 | `--batch-size N` | fetch | Symbols per provider request (default 100) |
 | `--min-success-ratio F` | fetch | Completeness gate (default 0.95) |
 | `--allow-partial` | fetch | Publish even below that ratio |
@@ -662,15 +662,42 @@ INFO - Skipping S3 upload (S3_AUTO_UPLOAD is not set; pass --upload to force)
 ## How growth is measured
 
 For each configured window, a ticker's growth is the percentage change between
-a **robust** opening and closing price:
+an opening and a closing price:
+
+```
+pct_change = (last_price / first_price - 1) * 100
+```
+
+How those two endpoints are picked is set by `analysis.return_basis`.
+
+### `return_basis: google_finance` (the default)
+
+Reproduces the percentage shown on a Google Finance quote page, so a result can
+be checked against one directly. Three rules together produce that match, and
+all three are needed — each one left out leaves a visible gap:
+
+| Rule | The alternative, and what it costs |
+|---|---|
+| A single close at each end | A median of several days damps the return toward zero. Worth 1–2 percentage points on a volatile name. |
+| The window opens at the last session **on or before** the calendar anchor | Opening at the first session *after* it shifts the baseline whenever the anchor lands on a weekend or holiday, which for a monthly anchor is most of the time. Worth up to a percentage point. |
+| The raw `close`, which the provider reports split-adjusted but **not** dividend-adjusted | `adj_close` folds dividends into the price, so the result is a total return, not the price return Google Finance charts. Negligible on a non-payer, several points a year on a high-yield name or ETF. |
+
+`endpoint_window` does not apply under this basis; the config value is kept so
+that switching back to `robust` needs no other edit.
+
+### `return_basis: robust`
+
+The noise-resistant definition:
 
 ```
 pct_change = (median(last N closes) / median(first N closes) - 1) * 100
 ```
 
-Prices are split- and dividend-adjusted. Endpoints are the median of
-`endpoint_window` trading days rather than a single close, so one bad print
-cannot define a window's return.
+Endpoints are the median of `endpoint_window` trading days, so one bad print
+cannot define a window's return, and prices are split- **and** dividend-
+adjusted, so income counts toward growth. It reads higher than Google Finance
+on anything with a yield — measured on KO over one year, 32.7% against 28.9%.
+That gap is a real difference in what is being measured, not an error.
 
 Every qualifying row carries the `threshold` it cleared, so a result explains
 itself without a trip back to the config:
@@ -708,7 +735,7 @@ Every run prints an eligibility funnel, so an empty result is never ambiguous:
 | Enough span | `min_coverage` | The ticker must span most of the window. Without this a stock listed two weeks ago appears in the 1-year table with its two-week return. |
 | Enough observations | `min_observation_ratio` | Span alone is not coverage: two prints a year apart span the window with no usable history in between. Also requires `2 × endpoint_window` prints so the endpoints cannot overlap. |
 | Still trading | 10 calendar days | A ticker with no recent prints is suspended or delisted, not a growth pick. |
-| Adjusted prices | `price_basis` | Rows the fetcher recorded as a raw-close fallback are excluded; an unadjusted series spanning a split produces a badly wrong return. Files predating provenance are screened with a warning rather than dropped. |
+| Adjusted prices | `price_basis` | Under `robust`, rows the fetcher recorded as a raw-close fallback are excluded; an unadjusted series spanning a split produces a badly wrong return. Files predating provenance are screened with a warning rather than dropped. Under `google_finance` the raw close is the intended input, so the marker says nothing about usability and every ticker passes this stage. |
 | Liquid enough | `min_median_volume` | A percentage move in a name trading a few hundred shares a day is not realisable. |
 | Above price floor | `min_price` | Filters sub-dollar names whose percentages are noise. Denominated in the exchange's own currency, so it is set per config. |
 
@@ -844,6 +871,7 @@ config:
     min_coverage: 0.8
     min_observation_ratio: 0.5
     endpoint_window: 3
+    return_basis: google_finance
     max_data_age_days: 5
     asset_types: [common_stock]
     windows:
@@ -864,7 +892,8 @@ Any eligibility setting may be overridden per window — `endpoint_window`,
 which short windows need. A 7-day window holds only 5–6 trading sessions, so
 the default 3-day endpoint median would leave no room between the two ends and
 a holiday-shortened week would exclude everything. `endpoint_window: 2` still
-medians each end while tolerating a 5-session week.
+medians each end while tolerating a 5-session week. (It has no effect under
+`return_basis: google_finance`, which uses single closes throughout.)
 
 Values are validated at load: ranges are checked, and window labels must be
 unique and safe as filenames and SQLite identifiers.
@@ -991,10 +1020,12 @@ Two caveats for anyone charting from this table:
 
 - It stores `adj_close` alongside the raw OHLC. **Chart the adjusted column**,
   or splits and dividends appear as cliffs the holder never experienced.
-- The chart will not tie out exactly with `pct_change` in the per-window
-  tables. Those use a 3-day median at each endpoint (`endpoint_window`), not a
-  single close, so the reported percentage is deliberately not the ratio of the
-  two endpoints you can see here.
+- Whether the chart ties out with `pct_change` in the per-window tables depends
+  on `return_basis`. Under `google_finance` it does, provided you chart `close`
+  and read the window's opening price off the last session on or before the
+  anchor. Under `robust` it does not: those percentages use a 3-day median at
+  each endpoint (`endpoint_window`), so the reported figure is deliberately not
+  the ratio of the two endpoints you can see here.
 
 Setting `include_price_history: false` removes the table and its CSV on the
 next run, so a stale copy is never served alongside fresh results.

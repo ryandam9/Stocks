@@ -1,9 +1,19 @@
 """Identify tickers whose price grew materially over a set of trailing windows.
 
-Growth for a window is the percentage change between a *robust* opening and
-closing price, subject to eligibility rules that keep the output tradeable.
-Endpoints are the median of the first and last N trading days rather than a
-single close, so one bad print cannot define a window's return.
+Growth for a window is the percentage change between an opening and a closing
+price, subject to eligibility rules that keep the output tradeable. How those
+two endpoints are picked is set by ``analysis.return_basis``:
+
+``google_finance`` (the default)
+    Reproduces the percentage on a Google Finance quote page, so a result can
+    be checked against one: single closes, a window starting at the last
+    session on or before the calendar anchor, and the raw (split-adjusted,
+    dividend-unadjusted) close.
+
+``robust``
+    Median of the first and last N trading days on the fully adjusted series,
+    so one bad print cannot define a window's return and dividends count
+    toward it. Reads higher than Google Finance on anything with a yield.
 
 Every run publishes a complete set of outputs. A window that matches nothing
 still writes an empty CSV with the correct header, so a later run can never
@@ -24,6 +34,7 @@ from config import (
     GROWTH_COLUMNS,
     INSTRUMENTS,
     PROJECT_ROOT,
+    RETURN_BASIS_GOOGLE_FINANCE,
     AnalysisSettings,
     load_config,
     load_dotenv,
@@ -82,8 +93,15 @@ class StaleDataError(RuntimeError):
     """The price dataset is too old to screen."""
 
 
-def load_price_data(file_path: str) -> pd.DataFrame:
+def load_price_data(
+    file_path: str, return_basis: str = RETURN_BASIS_GOOGLE_FINANCE
+) -> pd.DataFrame:
     """Read and normalise the EOD price CSV.
+
+    Args:
+        file_path: the EOD price CSV.
+        return_basis: which series ``price`` is taken from. See
+            :data:`config.RETURN_BASIS`.
 
     Raises:
         FileNotFoundError: the CSV does not exist.
@@ -100,10 +118,10 @@ def load_price_data(file_path: str) -> pd.DataFrame:
 
     df["stock_price_date"] = pd.to_datetime(df["stock_price_date"])
 
-    # Prefer the adjusted series, but only where the fetcher recorded it as
-    # genuinely adjusted. price_basis distinguishes real adjusted data from a
-    # raw-close fallback; without it a split inside the window silently
-    # corrupts the return.
+    # price_basis distinguishes a genuinely adjusted series from a raw-close
+    # fallback. It gates the adjusted series only: under "google_finance" the
+    # raw close is what is wanted, and the provider reports it split-adjusted
+    # already, so the fallback marker says nothing about its usability.
     if "price_basis" not in df.columns:
         # Written before provenance existed, so the basis genuinely cannot be
         # determined. It must not be guessed from close == adj_close: under the
@@ -113,7 +131,12 @@ def load_price_data(file_path: str) -> pd.DataFrame:
         # silently would report "nothing grew" for an entire dataset.
         df["price_basis"] = BASIS_UNKNOWN
 
-    price_col = "adj_close" if "adj_close" in df.columns else "close"
+    if return_basis == RETURN_BASIS_GOOGLE_FINANCE:
+        # Yahoo's raw close is split-adjusted but not dividend-adjusted, which
+        # is precisely the series Google Finance charts and quotes.
+        price_col = "close"
+    else:
+        price_col = "adj_close" if "adj_close" in df.columns else "close"
     df["price"] = pd.to_numeric(df[price_col], errors="coerce")
 
     if "volume" in df.columns:
@@ -177,7 +200,11 @@ def _worst_price_basis(values) -> str:
 
 
 def _endpoint_prices(window_df: pd.DataFrame, n: int) -> pd.DataFrame:
-    """Median price over the first and last ``n`` trading days per ticker."""
+    """Median price over the first and last ``n`` trading days per ticker.
+
+    ``n = 1`` degenerates to the window's opening and closing close, which is
+    what the "google_finance" return_basis uses.
+    """
     grouped = window_df.groupby("ticker", sort=False)
     first = grouped.head(n).groupby("ticker", sort=False)["price"].median()
     last = grouped.tail(n).groupby("ticker", sort=False)["price"].median()
@@ -189,6 +216,46 @@ def window_cutoff(latest_date: pd.Timestamp, window: dict) -> pd.Timestamp:
     if "days" in window:
         return latest_date - pd.Timedelta(days=int(window["days"]))
     return latest_date - pd.DateOffset(months=int(window["months"]))
+
+
+def endpoint_window_for(settings: AnalysisSettings) -> int:
+    """Trading days median-averaged at each endpoint, honouring return_basis.
+
+    "google_finance" is defined on single closes, so the configured (and
+    per-window overridden) endpoint_window does not apply to it. Forcing it
+    here rather than rejecting the combination in ``load_config`` keeps a
+    config valid when return_basis is switched back to "robust".
+    """
+    if settings.return_basis == RETURN_BASIS_GOOGLE_FINANCE:
+        return 1
+    return settings.endpoint_window
+
+
+def select_window(df: pd.DataFrame, cutoff: pd.Timestamp, return_basis: str) -> pd.DataFrame:
+    """Rows belonging to the trailing window starting at ``cutoff``.
+
+    The two bases disagree on which side of the anchor the window opens. The
+    calendar anchor is frequently not a trading day -- a 6-month window off a
+    Monday lands on a Saturday -- and "robust" then takes the *next* session
+    while Google Finance takes the *previous* one, a difference worth close to
+    a percentage point on a volatile name.
+
+    The anchor is resolved per ticker rather than once for the whole frame:
+    exchanges keep different holiday calendars, and a halted ticker has no
+    print on a day its neighbours do.
+    """
+    if return_basis != RETURN_BASIS_GOOGLE_FINANCE:
+        return df[df["stock_price_date"] >= cutoff]
+
+    prior = df[df["stock_price_date"] <= cutoff]
+    if prior.empty:
+        return df[df["stock_price_date"] >= cutoff]
+
+    # Tickers listed after the anchor have no prior session; they keep the
+    # plain cutoff and are dropped later by the coverage rule anyway.
+    starts = prior.groupby("ticker", sort=False)["stock_price_date"].max()
+    row_start = df["ticker"].map(starts).fillna(cutoff)
+    return df[df["stock_price_date"] >= row_start]
 
 
 def window_label_short(window: dict) -> str:
@@ -205,7 +272,7 @@ def _window_stats(
 ) -> tuple[pd.DataFrame, int]:
     """Per-ticker aggregates for one window, plus the window's calendar length."""
     cutoff = window_cutoff(latest_date, window)
-    window_df = df[df["stock_price_date"] >= cutoff]
+    window_df = select_window(df, cutoff, settings.return_basis)
     if window_df.empty:
         return pd.DataFrame(), 0
 
@@ -222,7 +289,7 @@ def _window_stats(
         median_volume=("volume", "median"),
         price_basis=("price_basis", _worst_price_basis),
     )
-    stats = stats.join(_endpoint_prices(window_df, settings.endpoint_window))
+    stats = stats.join(_endpoint_prices(window_df, endpoint_window_for(settings)))
 
     stats["days_covered"] = (stats["last_date"] - stats["first_date"]).dt.days
     stats["coverage"] = stats["days_covered"] / window_days
@@ -263,7 +330,7 @@ def compute_window_growth(
 
     # Endpoint windows must not overlap, or first and last describe partly the
     # same days and the measured change is damped toward zero.
-    min_observations = max(2, 2 * settings.endpoint_window)
+    min_observations = max(2, 2 * endpoint_window_for(settings))
 
     funnel: list[tuple[str, int]] = [("Universe in window", len(stats))]
     stages = [
@@ -274,7 +341,15 @@ def compute_window_growth(
             & (stats["observations"] >= min_observations),
         ),
         ("Still trading", stats["staleness_days"] <= MAX_STALENESS_DAYS),
-        ("Adjusted prices", stats["price_basis"].isin(SCREENABLE_BASES)),
+        # Only the adjusted series can be silently unadjusted. Under
+        # "google_finance" the raw close is the intended input, so a
+        # raw_fallback ticker is not degraded and must not be dropped.
+        (
+            "Adjusted prices",
+            pd.Series(True, index=stats.index)
+            if settings.return_basis == RETURN_BASIS_GOOGLE_FINANCE
+            else stats["price_basis"].isin(SCREENABLE_BASES),
+        ),
         ("Liquid enough", stats["median_volume"] >= settings.min_median_volume),
         ("Above price floor", stats["last_price"] >= settings.min_price),
         ("Valid baseline", stats["first_price"] > 0),
@@ -485,7 +560,10 @@ def analyze_stocks(
             "min_median_volume": settings.min_median_volume,
             "min_coverage": settings.min_coverage,
             "min_observation_ratio": settings.min_observation_ratio,
-            "endpoint_window": settings.endpoint_window,
+            "endpoint_window": endpoint_window_for(settings),
+            # Consumers cannot tell a price return from a total return by
+            # looking at the numbers, so the definition travels with them.
+            "return_basis": settings.return_basis,
             "max_data_age_days": settings.max_data_age_days,
             "asset_types": settings.asset_types,
             # The history table's row semantics depend on these, so a consumer
@@ -497,7 +575,7 @@ def analyze_stocks(
     )
 
     cfg.ensure_universe()
-    df = load_price_data(cfg.eod_csv)
+    df = load_price_data(cfg.eod_csv, settings.return_basis)
     latest_date = df["stock_price_date"].max()
 
     # Lineage: record which fetch produced the price file being screened, so a
@@ -539,7 +617,12 @@ def analyze_stocks(
     print(f"Run {run_id}")
     print(f"Loaded {len(df):,} rows for {df['ticker'].nunique():,} tickers")
     print(f"Data as of {latest_date:%Y-%m-%d} ({age_days} day(s) old)")
-    if (df["price_basis"] == BASIS_UNKNOWN).any():
+    if settings.return_basis == RETURN_BASIS_GOOGLE_FINANCE:
+        print(
+            "Returns use the google_finance basis: single closes, the last session "
+            "on or before each anchor, and unadjusted-for-dividends prices."
+        )
+    elif (df["price_basis"] == BASIS_UNKNOWN).any():
         print(
             "Warning: this price file predates adjusted-price provenance, so the "
             "basis cannot be verified. Re-run the fetch to record it."

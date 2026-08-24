@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pandas as pd
 import pytest
 from conftest import make_series
@@ -6,9 +8,10 @@ from analysis import (
     MAX_STALENESS_DAYS,
     _sample_price_history,
     compute_window_growth,
+    endpoint_window_for,
     load_price_data,
 )
-from config import AnalysisSettings
+from config import RETURN_BASIS_GOOGLE_FINANCE, RETURN_BASIS_ROBUST, AnalysisSettings
 
 LOOSE = AnalysisSettings(
     min_price=0.0,
@@ -106,12 +109,15 @@ def test_endpoint_median_absorbs_a_single_bad_print(build_frame, latest_date):
     series.loc[series.index[-1], ["price", "close"]] = 2000.0
     df = build_frame(series)
 
+    # endpoint_window only bites under the robust basis; google_finance is
+    # defined on single closes and would smooth nothing.
     single = AnalysisSettings(
         min_price=0.0,
         min_median_volume=0.0,
         min_coverage=0.8,
         endpoint_window=1,
         min_observation_ratio=0.0,
+        return_basis=RETURN_BASIS_ROBUST,
     )
     smoothed = AnalysisSettings(
         min_price=0.0,
@@ -119,6 +125,7 @@ def test_endpoint_median_absorbs_a_single_bad_print(build_frame, latest_date):
         min_coverage=0.8,
         endpoint_window=3,
         min_observation_ratio=0.0,
+        return_basis=RETURN_BASIS_ROBUST,
     )
     assert growth(df, latest_date, settings=single).loc[0, "pct_change"] > 1500
     assert growth(df, latest_date, settings=smoothed).loc[0, "pct_change"] < 150
@@ -149,7 +156,7 @@ def test_adj_close_preferred_over_close(tmp_path):
     csv = tmp_path / "eod.csv"
     series.drop(columns=["price"]).to_csv(csv, index=False)
 
-    loaded = load_price_data(str(csv))
+    loaded = load_price_data(str(csv), RETURN_BASIS_ROBUST)
     assert loaded["price"].iloc[0] == pytest.approx(50.0)
 
 
@@ -289,3 +296,79 @@ def test_threshold_differs_per_window(build_frame, latest_date):
 
     assert year["threshold"].tolist() == [25.0]
     assert month["threshold"].tolist() == [1.0]
+
+
+# ------------------------------------------------------------------ return_basis
+
+
+GF = AnalysisSettings(
+    min_price=0.0,
+    min_median_volume=0.0,
+    min_coverage=0.5,
+    min_observation_ratio=0.0,
+    return_basis=RETURN_BASIS_GOOGLE_FINANCE,
+)
+
+
+def test_google_finance_basis_ignores_endpoint_window(build_frame, latest_date):
+    """Its endpoints are single closes, whatever endpoint_window is set to."""
+    series = make_series("SPIKE", "Spiky", "2025-06-02", "2026-06-02", 100, 200)
+    series.loc[series.index[-1], ["price", "close", "adj_close"]] = 2000.0
+    df = build_frame(series)
+
+    smoothed = replace(GF, endpoint_window=3)
+    # A 3-day median would absorb the 10x print; Google Finance quotes the
+    # close itself, so the spike must come straight through.
+    assert growth(df, latest_date, settings=smoothed).loc[0, "pct_change"] > 1500
+    assert endpoint_window_for(smoothed) == 1
+
+
+def test_google_finance_window_opens_before_a_non_trading_anchor(build_frame):
+    """A weekend anchor must take the previous session, not the next one."""
+    # 2026-06-01 is a Monday, so the 3-month anchor is Saturday 2026-03-01.
+    latest = pd.Timestamp("2026-06-01")
+    series = make_series("AAA", "Alpha", "2025-06-02", "2026-06-01", 100, 200)
+    df = build_frame(series)
+    window = {"months": 3}
+
+    gf, _ = compute_window_growth(df, window, -100.0, GF, latest, "US")
+    robust, _ = compute_window_growth(
+        df, window, -100.0, replace(GF, return_basis=RETURN_BASIS_ROBUST), latest, "US"
+    )
+    # Friday the 27th, not Monday the 2nd.
+    assert gf.loc[0, "first_date"] == "2026-02-27"
+    assert robust.loc[0, "first_date"] == "2026-03-02"
+
+
+def test_google_finance_basis_uses_the_unadjusted_close(tmp_path):
+    """Dividends must not inflate the return the way adj_close does."""
+    series = make_series("DIV", "Dividend Payer", "2025-06-02", "2026-06-02", 100, 200)
+    # A dividend-adjusted series sits below the raw close it was derived from.
+    series["adj_close"] = series["price"] * 0.9
+    csv = tmp_path / "eod.csv"
+    series.drop(columns=["price"]).to_csv(csv, index=False)
+
+    assert load_price_data(str(csv), RETURN_BASIS_GOOGLE_FINANCE)["price"].iloc[0] == 100.0
+    assert load_price_data(str(csv), RETURN_BASIS_ROBUST)["price"].iloc[0] == 90.0
+
+
+def test_google_finance_basis_keeps_raw_fallback_tickers(build_frame, latest_date):
+    """The fallback marker describes adj_close, which this basis does not use."""
+    raw = make_series(
+        "RAW", "Raw Fallback", "2025-06-02", "2026-06-02", 100, 200, price_basis="raw_fallback"
+    )
+    result, funnel = compute_window_growth(
+        build_frame(raw), {"months": 12}, 25.0, GF, latest_date, "US"
+    )
+    assert set(result["ticker"]) == {"RAW"}
+    assert dict(funnel)["Adjusted prices"] == 1
+
+
+def test_short_window_anchor_also_resolves_backwards(build_frame):
+    """Day-denominated windows take the same previous-session anchor."""
+    latest = pd.Timestamp("2026-06-01")  # Monday; minus 7 days is Monday the 25th
+    df = build_frame(make_series("AAA", "Alpha", "2026-04-01", "2026-06-01", 100, 200))
+    gf, _ = compute_window_growth(
+        df, {"days": 7}, -100.0, replace(GF, min_coverage=0.1), latest, "US"
+    )
+    assert gf.loc[0, "first_date"] == "2026-05-25"
