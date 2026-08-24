@@ -9,6 +9,11 @@ Each run is a self-contained, self-identifying snapshot: it publishes a
 complete set of outputs, stamps every row with a `run_id` and `data_as_of`
 date, and refuses to screen price data that has gone stale.
 
+> [!IMPORTANT]
+> Deploying to AWS is manual. After **any** change to `src/**` or `config/**`,
+> run `./scripts/build_image.sh --push` — committing and pushing to git does
+> not deploy anything. See [Running in AWS](#running-in-aws).
+
 ## Setup
 
 This project uses [`uv`](https://github.com/astral-sh/uv).
@@ -249,7 +254,9 @@ Equivalent, but you supply by hand everything compose would have supplied —
 `.env` is not read by your shell, and the image does not contain it:
 
 ```bash
-docker build --build-arg GIT_REVISION=$(git rev-parse --short HEAD) -t stocks:dev .
+# --allow-dirty builds the working tree as stocks:dev, stamped <sha>-dirty so
+# a local experiment is never mistaken for a released revision.
+./scripts/build_image.sh --allow-dirty
 
 set -a; source .env; set +a
 eval "$(aws configure export-credentials --format env)"
@@ -270,7 +277,8 @@ volume instead of failing, and the run silently operates on empty data.
 **Rebuild after editing source.** `COPY src/ ./src/` bakes the code into the
 image. A stale image gives no warning — it just runs the old code. Query
 `run_metadata.code_revision` in a published database to see which commit
-actually produced it.
+actually produced it; `scripts/build_image.sh` exists to keep that value
+trustworthy.
 
 ### Copying the databases out of the volume
 
@@ -325,6 +333,22 @@ scripts remain for host use and produce byte-identical output.
 
 ## Running in AWS
 
+> [!WARNING]
+> **Nothing you commit reaches AWS until you build and push a new image.**
+> There is no CI/CD, no auto-deploy, and no webhook. `git push` ships nothing.
+> The Fargate tasks run whatever image is tagged `latest` in ECR, and that tag
+> only moves when you move it, from your own machine:
+>
+> ```bash
+> ./scripts/build_image.sh --push
+> ```
+>
+> This applies to **every** change under `src/**` and `config/**` — a one-line
+> threshold edit as much as a rewrite. Skipping it is silent: the schedule
+> keeps firing, the tasks keep exiting 0, the databases keep landing in S3, and
+> every one of them was produced by the old code. The only way to notice is to
+> check `run_metadata.code_revision` in a published database against your HEAD.
+
 The pipeline runs itself on a schedule in AWS: ECS Fargate in `ap-southeast-2`,
 publishing both databases to S3.
 
@@ -348,10 +372,14 @@ This is the question that decides everything else.
 
 | You changed | What ships it | Terraform needed? |
 |---|---|---|
-| `src/**` | rebuild + push the image | no |
-| `config/*.yaml`, `config/*.csv` | rebuild + push the image | no |
-| `requirements.lock`, `Dockerfile` | rebuild + push the image | no |
+| `src/**` | `./scripts/build_image.sh --push` | no |
+| `config/*.yaml`, `config/*.csv` | `./scripts/build_image.sh --push` | no |
+| `requirements.lock`, `Dockerfile` | `./scripts/build_image.sh --push` | no |
 | `infra/**` — sizing, schedule, alarms | `terraform apply` | yes |
+| both of the above | **image first, then `terraform apply`** | yes |
+
+Three of those four rows are an image push. Committing is not deploying: if you
+changed anything outside `infra/`, you are not done until the image is in ECR.
 
 **Config files ship inside the image.** `Dockerfile` does `COPY config/ ./config/`,
 and the Fargate task starts with an empty `/data` every run, so it reads the
@@ -366,29 +394,36 @@ you need a new image.
 #    terraform validate on every push to master.
 git push
 
-# 2. Build and push. Get the repository URL from Terraform rather than
-#    hard-coding it -- it contains the account ID.
-REPO=$(terraform -chdir=infra output -raw ecr_repository_url)
-aws ecr get-login-password --region ap-southeast-2 \
-  | docker login --username AWS --password-stdin "${REPO%%/*}"
-
-docker build --platform linux/amd64 \
-  --build-arg GIT_REVISION=$(git rev-parse --short HEAD) \
-  -t "${REPO}:latest" -t "${REPO}:git-$(git rev-parse --short HEAD)" .
-
-docker push "${REPO}:latest"
-docker push "${REPO}:git-$(git rev-parse --short HEAD)"
+# 2. Build and push.
+./scripts/build_image.sh --push
 ```
 
 That is the whole deployment. The task definitions run the `latest` tag, so the
 next scheduled run picks the new image up with no `terraform apply` and no
 task-definition revision.
 
-Two traps, both of which have already caught someone here:
+**Build through the script, not `docker build` directly.** The image excludes
+`.git`, so `runmeta.code_revision` cannot ask git and reads the
+`STOCKS_CODE_REVISION` baked at build time. Supplying that by hand stamps the
+image with a commit whose code it need not contain — the build copies the
+*working tree*, not the commit — and nothing downstream can tell afterwards:
+`run_metadata.code_revision` is the only record of what ran, and it would
+simply lie. The script refuses to produce that image.
+
+| Refuses | Escape hatch | What the hatch costs you |
+|---|---|---|
+| Uncommitted changes in the tree | `--allow-dirty` | Stamps `<sha>-dirty` and tags **only** `stocks:dev`. Never `:latest`, and `--push` is rejected outright. |
+| A commit that is not on `origin` | `--allow-unpushed` | Builds and warns. Nobody else can check out `git-<sha>` to see what shipped. |
+| A stamp that does not survive the build | none | Reads `STOCKS_CODE_REVISION` back out of the built image, catching a stale cached layer or a Dockerfile that stopped honouring the build arg. |
+
+It reads the repository URL and region from Terraform outputs rather than
+hard-coding them (the URL contains the account ID), and passes
+`--platform linux/amd64` always. Both of those were traps when the build was
+run by hand:
 
 - **`--platform linux/amd64` is not optional.** Fargate is x86; an arm64 image
   fails at task start with an exec format error and no useful log line.
-- **In zsh, use `${REPO}:latest`, not `$REPO:latest`.** zsh reads `:l` as its
+- **In zsh, `${REPO}:latest` needs the braces.** zsh reads `$REPO:l` as its
   lowercase modifier and silently builds a repository called `stocksatest`
   instead of tagging `stocks:latest`. The push then succeeds against the wrong
   name.

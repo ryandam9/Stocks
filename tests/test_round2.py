@@ -705,6 +705,12 @@ def test_readme_documents_only_real_cli_flags():
         real |= set(_re.findall(r"--[a-z][a-z-]+", help_text))
     # Flags owned by the shell wrappers and the universe CLI.
     real |= {"--upload", "--allow-stale", "--prune", "--help"}
+    # build_image.sh parses its own flags, so read them out of its case arms
+    # rather than listing them here: a flag documented in the README but never
+    # handled by the script would otherwise pass this test and fail in use.
+    script = open(os.path.join(PROJECT_ROOT, "scripts", "build_image.sh")).read()
+    case_block = script[script.index("for arg in") : script.index("esac")]
+    real |= set(_re.findall(r"(--[a-z][a-z-]+)\)", case_block))
     # Docker's own flags, from the Docker section. A different namespace: this
     # test guards against documenting project flags that do not exist, and
     # cannot verify third-party ones.

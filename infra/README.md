@@ -83,7 +83,7 @@ the rollout below.
 |---|---|---|
 | 1 | `terraform apply` with `schedule_enabled = false` | 43 resources, 0 destroyed |
 | 2 | Click the SNS confirmation email AWS sends | Subscription leaves `PendingConfirmation` |
-| 3 | Push the image — see the `ecr_push_commands` output | Image visible in ECR |
+| 3 | Push the image: `./scripts/build_image.sh --push` | Image visible in ECR, tagged `git-<sha>` for the commit you pushed |
 | 4 | Run each task by hand — see the `run_task_manually` output | Both exit 0; `us.db`/`asx.db` timestamps move in S3 |
 | 5 | Force a failure: set a bad `data_bucket`, apply, run a task | **An email actually arrives** |
 | 6 | Set `schedule_enabled = true`, apply | Three consecutive nights green |
@@ -97,11 +97,14 @@ alarm, and the failure this design exists to catch is the silent one.
 run the `latest` tag, so pushing a new image is enough:
 
 ```bash
-terraform output -raw ecr_push_commands   # then run them from the repo root
+./scripts/build_image.sh --push   # from the repository root
 ```
 
-Build with `--platform linux/amd64`. Fargate x86 rejects an arm64 image at task
-start with an exec format error.
+Always build through the script. It passes `--platform linux/amd64` (Fargate
+x86 rejects an arm64 image at task start with an exec format error), reads the
+repository URL and region from these outputs, and refuses to push an image
+whose stamped revision does not match a clean, pushed commit — see *Shipping a
+code or config change* in the root README.
 
 **Pause the schedule** — set `schedule_enabled = false` and apply. The
 schedules stay defined but stop firing.

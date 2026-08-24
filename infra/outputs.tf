@@ -5,10 +5,13 @@ output "ecr_repository_url" {
 
 output "ecr_push_commands" {
   description = "Copy-paste image push, run from the repository root."
+  # Deliberately the script rather than the docker commands it wraps. Building
+  # by hand omits --build-arg GIT_REVISION, which stamps the image "unknown",
+  # and cannot notice that the working tree differs from the commit being
+  # claimed. run_metadata.code_revision is the only record of what ran.
   value = join("\n", [
-    "aws ecr get-login-password --region ${var.region} | docker login --username AWS --password-stdin ${split("/", aws_ecr_repository.stocks.repository_url)[0]}",
-    "docker build --platform linux/amd64 -t ${aws_ecr_repository.stocks.repository_url}:${var.image_tag} .",
-    "docker push ${aws_ecr_repository.stocks.repository_url}:${var.image_tag}",
+    "./scripts/build_image.sh --push",
+    "# reads the repository URL (${aws_ecr_repository.stocks.repository_url}) and region (${var.region}) from these outputs",
   ])
 }
 
