@@ -54,6 +54,13 @@ config:
     # (11.9% vs 14.1% worst-case deviation), because month anchors cluster --
     # a month's last session and the next month's first are one day apart.
     price_history_sampling: weekly
+    # Also publish a trailing-12-month history for *every* ticker in
+    # config/asx_etf.csv, not just the ones a window matched, so any ticker in
+    # the universe can be charted. Lands in the ASX_1_YEAR_HISTORY table,
+    # sampled at price_history_sampling above and indexed on
+    # (ticker, stock_price_date). The existing screen tables are unaffected.
+    # ~400 tickers x ~53 weekly points is ~21k rows, under 2 MB.
+    include_universe_history: true
     windows:
       - {months: 12, label: 1_year, threshold: 25.0}
       - {months: 6, label: 6_months, threshold: 25.0}

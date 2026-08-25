@@ -35,6 +35,7 @@ from config import (
     INSTRUMENTS,
     PROJECT_ROOT,
     RETURN_BASIS_GOOGLE_FINANCE,
+    UNIVERSE_HISTORY_MONTHS,
     AnalysisSettings,
     load_config,
     load_dotenv,
@@ -49,6 +50,7 @@ from runmeta import (
 )
 from universe import (
     EXCHANGE_UNKNOWN,
+    UNIVERSE_COLUMNS,
     default_asset_type_for,
     filter_universe,
     load_universe,
@@ -465,6 +467,96 @@ def _sample_price_history(combined: pd.DataFrame, sampling: str) -> pd.DataFrame
     return combined[dates.eq(last)]
 
 
+# Per-row facts kept in the universe-wide history table. Everything constant
+# for a run (fetch_time, price_basis, run ids) or joinable on ticker (name,
+# exchange, asset_type) is deliberately absent: on a universe-wide table those
+# columns are repeated on every row of every ticker, and they are already in
+# the manifest and the universe file.
+UNIVERSE_HISTORY_COLUMNS = [
+    "ticker",
+    "stock_price_date",
+    "open",
+    "high",
+    "low",
+    "close",
+    "adj_close",
+    "volume",
+]
+
+
+def build_universe_table(metadata: pd.DataFrame, file_path: str) -> str:
+    """Write the resolved universe as a lookup table for the history table.
+
+    The history table stores only per-row facts, so nothing in it names a
+    ticker: for one that matched no window there is no per-window row to join
+    ``name`` from either. This supplies that join, once per ticker rather than
+    once per weekly row.
+
+    Every ticker in the universe is written, including the ones the provider
+    returned no prices for. A ``LEFT JOIN`` from here therefore shows which
+    part of the universe is chartable and which is missing, which an inner
+    join built the other way round would silently hide.
+
+    Returns:
+        Path to the CSV written.
+    """
+    output_path = _growth_output_path(file_path, "_universe")
+    atomic_write_csv(metadata[UNIVERSE_COLUMNS].sort_values("ticker"), output_path)
+    print(f"Universe lookup: {len(metadata):,} tickers -> {output_path}")
+    return output_path
+
+
+def build_universe_history(
+    df: pd.DataFrame,
+    file_path: str,
+    latest_date: pd.Timestamp,
+    sampling: str = "weekly",
+    months: int = UNIVERSE_HISTORY_MONTHS,
+) -> str:
+    """Write a trailing-``months`` sampled price history for the whole universe.
+
+    Unlike :func:`build_combined_growth` this is not restricted to tickers that
+    matched a screen window, and the ``asset_types`` filter is not applied --
+    the table exists so any ticker in the universe can be charted, including
+    the ones the screen deliberately ignores.
+
+    The series is trimmed to a clean ``months``-month span even though the
+    fetch pulls 400 days, so the row count matches the name of the table it
+    lands in. Trimming happens before sampling, so the first weekly point sits
+    inside the window rather than before it.
+
+    Always writes a file, empty-but-headed when nothing qualifies, so a later
+    run cannot leave an earlier run's history in place to be republished.
+
+    Returns:
+        Path to the CSV written.
+    """
+    output_path = _growth_output_path(file_path, "_universe_history")
+    cutoff = latest_date - pd.DateOffset(months=months)
+
+    history = df[df["stock_price_date"] >= cutoff]
+    sampled = _sample_price_history(history, sampling)
+
+    # adj_close is absent from price files written before it was recorded.
+    # Emit the column regardless so the published table's schema does not
+    # depend on the age of the CSV underneath it.
+    sampled = sampled.reindex(columns=UNIVERSE_HISTORY_COLUMNS)
+    sampled = sampled.copy()
+    if not sampled.empty:
+        sampled["stock_price_date"] = pd.to_datetime(sampled["stock_price_date"]).dt.strftime(
+            "%Y-%m-%d"
+        )
+    sampled = sampled.sort_values(["ticker", "stock_price_date"], kind="mergesort")
+
+    atomic_write_csv(sampled, output_path)
+    tickers = sampled["ticker"].nunique() if not sampled.empty else 0
+    print(
+        f"\nUniverse history ({sampling}, {months}m): {len(sampled):,} rows for "
+        f"{tickers:,} tickers -> {output_path}"
+    )
+    return output_path
+
+
 def build_combined_growth(
     df: pd.DataFrame,
     results: dict[str, pd.DataFrame],
@@ -570,6 +662,8 @@ def analyze_stocks(
             # cannot interpret it from the rows alone.
             "include_price_history": settings.include_price_history,
             "price_history_sampling": settings.price_history_sampling,
+            "include_universe_history": settings.include_universe_history,
+            "universe_history_months": UNIVERSE_HISTORY_MONTHS,
             "windows": settings.windows,
         },
     )
@@ -607,6 +701,13 @@ def analyze_stocks(
     manifest.universe_screened = len(screened)
 
     excluded_types = len(metadata) - len(screened)
+
+    # The universe-wide history is taken before the asset_types filter: the
+    # screen ignores warrants and units, but a chart of one is still a chart
+    # someone may want. Restricted to the current universe file all the same,
+    # so a price CSV still carrying a delisted ticker does not resurrect it.
+    universe_df = df[df["ticker"].isin(set(metadata["ticker"]))]
+
     df = df[df["ticker"].isin(set(screened["ticker"]))]
     if df.empty:
         raise ValueError(
@@ -698,6 +799,31 @@ def analyze_stocks(
             os.remove(stale)
             print(f"\nRemoved price history from a previous run: {stale}")
         outputs["combined"] = None
+
+    if settings.include_universe_history:
+        outputs["universe"] = {
+            "path": build_universe_table(metadata, cfg.eod_csv),
+            "table": cfg.universe_table,
+        }
+        outputs["universe_history"] = {
+            "path": build_universe_history(
+                universe_df,
+                cfg.eod_csv,
+                latest_date,
+                sampling=settings.price_history_sampling,
+            ),
+            "table": cfg.universe_history_table,
+        }
+    else:
+        # Same reasoning as the combined history above: a file left behind by
+        # a run that had this enabled would be republished as current.
+        for suffix, what in (("_universe_history", "history"), ("_universe", "lookup")):
+            stale = _growth_output_path(cfg.eod_csv, suffix)
+            if os.path.exists(stale):
+                os.remove(stale)
+                print(f"\nRemoved universe {what} from a previous run: {stale}")
+        outputs["universe_history"] = None
+        outputs["universe"] = None
 
     manifest.counts = counts
     manifest.outputs = outputs

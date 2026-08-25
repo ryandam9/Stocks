@@ -233,6 +233,35 @@ def publish(cfg: StockConfig) -> str:
                 conn.execute(f'DROP TABLE IF EXISTS "{cfg.prefix}_growth"')
                 logger.info("  Skipping price history (include_price_history: false)")
 
+            table = cfg.universe_history_table
+            if cfg.analysis.include_universe_history:
+                rows = load_csv(conn, cfg.universe_csv, cfg.universe_table)
+                # One row per ticker, so the join the history table needs is a
+                # unique lookup; declaring that also rejects a duplicated
+                # ticker at load time rather than silently fanning out a chart
+                # query into two rows per date.
+                conn.execute(
+                    f'CREATE UNIQUE INDEX "ix_{cfg.universe_table}_ticker" '
+                    f'ON "{cfg.universe_table}" ("ticker")'
+                )
+                logger.info(f"  Loaded {rows} rows -> {cfg.universe_table}")
+
+                rows = load_csv(conn, cfg.universe_history_csv, table)
+                # The matched-ticker history is small enough to scan; this one
+                # is the whole universe and is read one ticker at a time to
+                # draw a chart, which is exactly what the index serves.
+                conn.execute(
+                    f'CREATE INDEX "ix_{table}_ticker_date" '
+                    f'ON "{table}" ("ticker", "stock_price_date")'
+                )
+                logger.info(f"  Loaded {rows} rows -> {table}")
+            else:
+                conn.execute(f'DROP TABLE IF EXISTS "{table}"')
+                conn.execute(f'DROP TABLE IF EXISTS "{cfg.universe_table}"')
+                logger.info(
+                    f"  Skipping {table} and {cfg.universe_table} (include_universe_history: false)"
+                )
+
             count = build_consistent_growth(conn, cfg.prefix, cfg.consistent_growth_labels)
             logger.info(
                 f"  consistent_growth_stocks: {count} rows "
