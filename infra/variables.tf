@@ -24,6 +24,17 @@ variable "alert_email" {
   }
 }
 
+variable "notify_email" {
+  description = "Address subscribed to the success topic, which emails once each database reaches S3. Defaults to alert_email. Confirm the subscription email AWS sends, or nothing is delivered."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.notify_email == null || can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", coalesce(var.notify_email, "x@y.z")))
+    error_message = "Must be an email address."
+  }
+}
+
 variable "vpc_cidr" {
   description = "CIDR for the VPC this stack creates. Must not overlap anything you peer with."
   type        = string

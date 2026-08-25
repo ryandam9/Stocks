@@ -38,6 +38,11 @@ output "alert_topic_arn" {
   value       = aws_sns_topic.alerts.arn
 }
 
+output "notification_topic_arn" {
+  description = "Emails once each database reaches S3. Confirm the subscription AWS sends, or nothing is delivered."
+  value       = aws_sns_topic.notifications.arn
+}
+
 output "schedules" {
   description = "When each universe runs, in Melbourne time."
   value = {

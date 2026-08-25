@@ -48,6 +48,11 @@ locals {
     }
   }
 
+  # Success notifications go to the same address as alerts unless one is set
+  # explicitly. A default cannot reference another variable, so it defaults to
+  # null and is resolved here.
+  notify_email = coalesce(var.notify_email, var.alert_email)
+
   # Melbourne observes daylight saving. An IANA zone tracks the transitions;
   # a UTC cron would drift an hour twice a year. Note this pins the schedule to
   # Melbourne local time only -- it does not keep the gap to the New York
