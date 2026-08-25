@@ -6,6 +6,14 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 6.0"
     }
+
+    # Zips the notification lambda at plan time, so its source lives in the
+    # repository as a readable .py rather than as a committed binary that
+    # someone has to remember to rebuild.
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.0"
+    }
   }
 
   # Partial configuration: the state bucket is named in backend.hcl, which

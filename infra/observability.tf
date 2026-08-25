@@ -4,6 +4,9 @@
 #   3. the task never ran at all               -> heartbeat alarm
 # The third is the one silence hides, so its alarm treats missing data as
 # breaching rather than waiting for a datapoint that will never arrive.
+#
+# A fourth lives in notifications.tf, because it belongs to the machinery it
+# watches: the success notifier erroring, which also presents as silence.
 
 resource "aws_cloudwatch_log_group" "universe" {
   for_each = local.universes
