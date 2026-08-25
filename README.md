@@ -521,6 +521,18 @@ row above — so a "task completed" email would read as success on exactly the
 night there is no new data. It carries the object's size, the cheapest check
 that the run produced a real database rather than a short one.
 
+```
+stocks: asx.db published to s3://<bucket>/asx.db at 18:39 AEST on Tue 25 Aug 2026
+(2015232 bytes). The task completed and the database is live.
+```
+
+The time is Melbourne local, the same zone the schedules run on, and it names
+the offset in force that night — `AEST` or `AEDT`. EventBridge can only quote
+its own UTC `$.time` and cannot convert it, so a small lambda (`stocks-notify`)
+does the conversion and publishes the message. That lambda erroring is itself
+a way for a successful run to go unreported, so `stocks-notify-failed` alarms
+on it to the *alert* topic.
+
 Both topics subscribe `alert_email` unless `notify_email` is set, and **each
 needs its own confirmation click**; AWS sends one email per subscription.
 

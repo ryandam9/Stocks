@@ -37,3 +37,6 @@ data/
 backend.hcl
 # .terraform.lock.hcl is deliberately NOT ignored: committing it pins provider
 # versions and hashes, and it holds nothing account-specific.
+
+# Built by the archive provider from infra/lambda/ on every plan.
+infra/build/

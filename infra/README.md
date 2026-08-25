@@ -128,6 +128,15 @@ S3 object rather than by ECS task completion — a task can exit 0 having
 published nothing, so "task completed" would read as success on exactly the
 night there is no new data. See §8.4 of the spec.
 
+The success message quotes the time in Melbourne local, labelled `AEST` or
+`AEDT`. EventBridge substitutes values into a message but cannot convert them,
+and the only timestamp it has is UTC, so the event goes through the
+`stocks-notify` lambda (`infra/lambda/notify_published.py`) instead of straight
+to SNS. Change the zone by changing `local.timezone` in `main.tf` — the same
+value the schedules use, so the email and the cron can never quote two
+different clocks. The lambda is redeployed by `terraform apply`: the archive
+provider rezips the file and `source_code_hash` notices.
+
 **Read a run's logs** — `/ecs/stocks/us` and `/ecs/stocks/asx`. A healthy run
 ends with `Uploaded to s3://…`; a misconfigured one ends with
 `Skipping S3 upload (…)`, which is what the `upload-skipped` alarm watches for.
