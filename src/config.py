@@ -180,12 +180,26 @@ class AnalysisSettings:
     # and the first of the next are the *same* session one day apart, so those
     # points are near-duplicates that buy no accuracy.
     price_history_sampling: str = "weekly"
+    # Whether to publish a trailing-year price history for the *whole*
+    # universe -- every ticker in the ticker file -- rather than only the ones
+    # a window matched. include_price_history answers "chart the winners";
+    # this answers "chart anything". Off by default: it is roughly 6x the rows
+    # of the matched-ticker history, and a database that only serves the screen
+    # should not carry them. Sampling follows price_history_sampling, and the
+    # asset_types filter deliberately does not apply -- the point is coverage.
+    include_universe_history: bool = False
     windows: list[dict] = field(default_factory=lambda: list(DEFAULT_WINDOWS))
 
 
 # Sampling modes for published price history, mapped to the period whose last
 # trading day is kept. "daily" keeps every session.
 PRICE_HISTORY_SAMPLING = ("daily", "weekly", "semi_monthly", "month_end")
+
+# Span of the universe-wide history table, and the number in its name. The
+# fetch pulls 400 days so the 1-year *screen* window can open on the last
+# session at or before its anchor; the history table is trimmed back to a
+# clean 12 months so "1_YEAR" in the table name is literally true.
+UNIVERSE_HISTORY_MONTHS = 12
 
 
 WINDOW_OVERRIDABLE = (
@@ -293,6 +307,37 @@ class StockConfig:
     def combined_growth_csv(self) -> str:
         """Price history for every ticker that grew in any window."""
         return self._growth_path("_growth")
+
+    @property
+    def universe_csv(self) -> str:
+        """Resolved universe metadata, as published beside the history table."""
+        return self._growth_path("_universe")
+
+    @property
+    def universe_table(self) -> str:
+        """SQLite lookup table naming every ticker, e.g. ``asx_universe``.
+
+        Lower case like the other per-run tables; the history table is upper
+        case because it is named for the market rather than for this config.
+        """
+        return f"{self.exchange.lower()}_universe"
+
+    @property
+    def universe_history_csv(self) -> str:
+        """Trailing-year price history for every ticker in the universe."""
+        return self._growth_path("_universe_history")
+
+    @property
+    def universe_history_table(self) -> str:
+        """SQLite table holding the universe-wide history, e.g. ASX_1_YEAR_HISTORY.
+
+        Named for the exchange rather than :attr:`prefix`, because the table is
+        a property of the market: it holds every instrument the universe lists,
+        not the instrument_type slice a screen happens to be configured for.
+        Two configs on one exchange therefore publish to separate databases,
+        which they already do -- db_path is per config.
+        """
+        return f"{self.exchange.upper()}_{UNIVERSE_HISTORY_MONTHS // 12}_YEAR_HISTORY"
 
     def growth_csv(self, label: str) -> str:
         """Per-window growth summary, e.g. ``us_stocks_eod_growth_1_year.csv``."""
@@ -478,6 +523,14 @@ def load_config(exchange: str, instrument_type: str) -> StockConfig:
             f"{analysis_raw['include_price_history']!r}"
         )
 
+    if "include_universe_history" in analysis_raw and not isinstance(
+        analysis_raw["include_universe_history"], bool
+    ):
+        raise ValueError(
+            f"{path}: include_universe_history must be true or false, got "
+            f"{analysis_raw['include_universe_history']!r}"
+        )
+
     if "price_history_sampling" in analysis_raw:
         mode = analysis_raw["price_history_sampling"]
         if mode not in PRICE_HISTORY_SAMPLING:
@@ -548,6 +601,7 @@ def load_config(exchange: str, instrument_type: str) -> StockConfig:
         asset_types=list(analysis_raw.get("asset_types", ["common_stock", "etf"])),
         include_price_history=bool(analysis_raw.get("include_price_history", False)),
         price_history_sampling=str(analysis_raw.get("price_history_sampling", "weekly")),
+        include_universe_history=bool(analysis_raw.get("include_universe_history", False)),
         return_basis=str(analysis_raw.get("return_basis", RETURN_BASIS_GOOGLE_FINANCE)),
         windows=list(windows),
     )
@@ -578,6 +632,8 @@ def _main() -> None:
             "  KEY: ticker_file | data_dir | db_path | eod_csv |\n"
             "       combined_growth_csv | growth_labels | prefix |\n"
             "       growth_schema_sql | include_price_history |\n"
+            "       include_universe_history | universe_history_csv |\n"
+            "       universe_history_table | universe_csv | universe_table |\n"
             "       consistent_growth_labels",
             file=sys.stderr,
         )
@@ -603,9 +659,9 @@ def _main() -> None:
         print("\n".join(cfg.consistent_growth_labels))
         return
 
-    if key == "include_price_history":
+    if key in ("include_price_history", "include_universe_history"):
         # Printed as a shell-friendly true/false.
-        print("true" if cfg.analysis.include_price_history else "false")
+        print("true" if getattr(cfg.analysis, key) else "false")
         return
 
     if not hasattr(cfg, key) or key.startswith("_"):

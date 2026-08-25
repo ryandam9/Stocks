@@ -1072,6 +1072,85 @@ any per-window table, rather than being repeated on every row), and the
 database is `VACUUM`ed before publication, since bulk inserts otherwise leave
 roughly half the file as free pages.
 
+### Charting the whole universe
+
+`include_price_history` charts the *winners*. To chart **anything** in the
+universe — including the tickers no window matched and the asset types the
+screen ignores — enable the universe-wide history as well:
+
+```yaml
+analysis:
+  include_universe_history: true
+  price_history_sampling: weekly   # shared with include_price_history
+```
+
+That publishes two extra tables. `<EXCHANGE>_1_YEAR_HISTORY`
+(`ASX_1_YEAR_HISTORY`, `US_1_YEAR_HISTORY`) holds a trailing 12 months of
+sampled prices for every ticker in the ticker file, and `<exchange>_universe`
+(`asx_universe`) is the lookup that names them. Both are additive: no existing
+table changes schema or contents, and the screen results are computed exactly as
+before.
+
+```
+ASX_1_YEAR_HISTORY  ticker  stock_price_date  open  high  low  close  adj_close  volume
+asx_universe        ticker  name  exchange  asset_type  currency  source_date
+```
+
+The history table stores per-row facts only, so nothing in it names a ticker —
+and for one that matched no window there is no per-window row to join `name`
+from either. `<exchange>_universe` supplies that join once per ticker rather
+than once per weekly row, keeping the cost at ~400 rows instead of ~20,000.
+It is indexed `UNIQUE` on `ticker`, so a duplicate is rejected at load time
+rather than silently fanning a chart query out into two rows per date.
+
+It lists **every** ticker in the universe, including any the provider returned
+no prices for — one on the ASX today, `MGOC`. A `LEFT JOIN` from the lookup
+therefore shows which part of the universe is chartable and which is missing,
+which an inner join built the other way round would hide.
+
+Three differences from the matched-ticker `<prefix>_growth` history:
+
+- **The `asset_types` filter does not apply.** A warrant is not equity exposure
+  and has no business in a table labelled "stocks", but it is still something
+  someone may want to chart, so it is here.
+- **The span is a literal year.** The fetch pulls 400 days so the 1-year
+  *screen* window can open on the last session at or before its anchor; this
+  table is trimmed back to 12 months, then sampled — so `1_YEAR` in the name is
+  true and the row count is ~53, not ~57.
+- **It is indexed on `(ticker, stock_price_date)`.** The matched-ticker table is
+  small enough to scan; this one is read one ticker at a time to draw a chart,
+  which is what the index serves.
+
+```sql
+-- one chart, with a title for it
+SELECT u.name, h.stock_price_date, h.close, h.adj_close
+FROM   ASX_1_YEAR_HISTORY h
+JOIN   asx_universe u USING (ticker)
+WHERE  h.ticker = 'VAS'
+ORDER  BY h.stock_price_date;
+
+-- what is chartable, and what is not
+SELECT u.ticker, u.name, COUNT(h.ticker) AS points
+FROM   asx_universe u
+LEFT   JOIN ASX_1_YEAR_HISTORY h USING (ticker)
+GROUP  BY u.ticker
+ORDER  BY points;
+```
+
+Measured on the ASX ETF universe: 20,067 history rows for 395 tickers (up to 53
+a ticker; fewer for anything listed inside the year) plus a 396-row lookup,
+taking `asx.db` from 0.92 MB to 1.91 MB. Both charting caveats above still apply — chart `adj_close` unless
+you are reconciling against Google Finance.
+
+Off by default, including for the US config: it is roughly 6x the rows of the
+matched-ticker history, so a database that only serves the screen should not
+carry them. Scaled to the US universe at ~76 bytes a row, the whole common-stock
+list is ~300k rows (~23 MB); adding every ETF and the other asset types takes it
+to ~710k rows (~54 MB), or ~71 MB with the index; the lookup adds a row per
+ticker either way, which is noise at that scale. Setting it back to `false`
+drops both tables and deletes their CSVs on the next run, the same guarantee
+`include_price_history` gives.
+
 ## Tests
 
 ```bash
