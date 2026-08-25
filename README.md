@@ -505,6 +505,34 @@ successful run, which is correct rather than a fault: it treats missing data as
 breaching, because "no logs at all" is precisely the condition it exists to
 detect.
 
+### Knowing when it worked
+
+Silence from the alarms above is evidence that no detector fired — not evidence
+that a database exists. So success has its own path, on its own topic:
+
+| Topic | Sends | Volume |
+|---|---|---|
+| `stocks-alerts` | the three failures above | ~0/day |
+| `stocks-notifications` | `us.db` / `asx.db` reached S3 | ~2/day |
+
+The success mail is triggered by the **S3 object**, not by the ECS task exiting
+0. A task can exit 0 having published nothing — that is the `upload-skipped`
+row above — so a "task completed" email would read as success on exactly the
+night there is no new data. It carries the object's size, the cheapest check
+that the run produced a real database rather than a short one.
+
+Both topics subscribe `alert_email` unless `notify_email` is set, and **each
+needs its own confirmation click**; AWS sends one email per subscription.
+
+```bash
+aws sns list-subscriptions --region ap-southeast-2 \
+  --query 'Subscriptions[?starts_with(TopicArn,`arn:aws:sns:ap-southeast-2`)].[TopicArn,Endpoint,SubscriptionArn]' \
+  --output text | grep stocks
+```
+
+A `SubscriptionArn` of `PendingConfirmation` means the link was never clicked
+and nothing will be delivered.
+
 ### Rolling back
 
 The task definitions track `latest`, so rolling back means moving that tag:

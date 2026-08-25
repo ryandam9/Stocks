@@ -11,7 +11,7 @@ gitignored; `.example` copies of both are committed:
 
 | File | Holds |
 |---|---|
-| `terraform.tfvars` | data bucket name, alert email |
+| `terraform.tfvars` | data bucket name, alert email, notification email |
 | `backend.hcl` | state bucket name |
 
 Neither is reconstructable from the repository, so they are backed up to S3 —
@@ -82,9 +82,9 @@ the rollout below.
 | Phase | Do | Confirm |
 |---|---|---|
 | 1 | `terraform apply` with `schedule_enabled = false` | 43 resources, 0 destroyed |
-| 2 | Click the SNS confirmation email AWS sends | Subscription leaves `PendingConfirmation` |
+| 2 | Click **both** SNS confirmation emails AWS sends | Neither subscription is left `PendingConfirmation` |
 | 3 | Push the image: `./scripts/build_image.sh --push` | Image visible in ECR, tagged `git-<sha>` for the commit you pushed |
-| 4 | Run each task by hand — see the `run_task_manually` output | Both exit 0; `us.db`/`asx.db` timestamps move in S3 |
+| 4 | Run each task by hand — see the `run_task_manually` output | Both exit 0; `us.db`/`asx.db` timestamps move in S3, and a "published" email arrives for each |
 | 5 | Force a failure: set a bad `data_bucket`, apply, run a task | **An email actually arrives** |
 | 6 | Set `schedule_enabled = true`, apply | Three consecutive nights green |
 
@@ -108,6 +108,25 @@ code or config change* in the root README.
 
 **Pause the schedule** — set `schedule_enabled = false` and apply. The
 schedules stay defined but stop firing.
+
+## Two topics, two subscriptions
+
+| Topic | Sends | Volume |
+|---|---|---|
+| `stocks-alerts` | a run broke, or no run happened in 24 h | ~0/day |
+| `stocks-notifications` | `us.db` / `asx.db` reached S3 | ~2/day |
+
+Both subscribe `alert_email` unless `notify_email` is set to something else,
+and **each needs its own confirmation click** — AWS sends one email per
+subscription. Until confirmed, the subscription reads `PendingConfirmation` and
+nothing is delivered.
+
+They are separate because routine success at ~2/day and exceptional failure at
+~0/day do not belong on one topic: the volume trains you to filter the topic,
+and the filter then swallows the alerts. The success message is driven by the
+S3 object rather than by ECS task completion — a task can exit 0 having
+published nothing, so "task completed" would read as success on exactly the
+night there is no new data. See §8.4 of the spec.
 
 **Read a run's logs** — `/ecs/stocks/us` and `/ecs/stocks/asx`. A healthy run
 ends with `Uploaded to s3://…`; a misconfigured one ends with

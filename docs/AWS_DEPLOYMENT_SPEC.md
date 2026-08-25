@@ -508,7 +508,7 @@ flowchart TD
     RAN -->|No| H["Heartbeat alarm<br/>no 'Uploaded to' in 24 h"]
     RAN -->|Yes| EXIT{"Container<br/>exit code"}
 
-    EXIT -->|0| OK["Database published<br/>No alert"]
+    EXIT -->|0| OK["Database published<br/>S3 event -> stocks-notifications"]
     EXIT -->|1| E1["Error<br/>bug, network, IAM"]
     EXIT -->|2| E2["Stale data<br/>provider behind"]
     EXIT -->|3| E3["Incomplete fetch<br/>< 95% of tickers"]
@@ -574,7 +574,48 @@ period with one evaluation period — detection lands within roughly a day of a
 missed run. Do not raise it to two evaluation periods reaching for a "26 hour"
 tolerance: that gives 48-hour detection, not 26.
 
-### 8.4 Retries — deliberately omitted
+### 8.4 Success notification
+
+The three detectors above answer "did something break". The opposite question —
+"did tonight's database land" — needs its own path, because a silent alarm is
+only evidence that no detector fired, not that a database exists.
+
+| | |
+|---|---|
+| Source | S3 `Object Created` via EventBridge, **not** ECS task completion |
+| Filter | bucket + key in (`us.db`, `asx.db`) |
+| Target | SNS `stocks-notifications` → email |
+| Volume | one message per database per run, ~2/day |
+
+**Why the S3 object rather than the ECS task.** A task can exit 0 having
+published nothing — that is failure mode 8.2, when `S3_BUCKET` or
+`S3_AUTO_UPLOAD` goes missing from the task definition. An "ECS task completed"
+email would then arrive looking like success on exactly the night there is no
+new data. Watching the object means the email cannot be sent unless the
+database is really in the bucket.
+
+**Why a second SNS topic.** Routine success is ~2 messages a day and
+exceptional failure is ~0. On one topic the volume trains you to filter the
+topic, and the filter then swallows the alerts too. Split, `stocks-alerts` stays
+rare enough to be worth reading.
+
+**Why one email per database, not one per night.** The runs are 2h15m apart
+(07:15 and 09:30 Melbourne). A combined message would have to hold the ASX
+result back until the US run finished, and would say nothing at all on a night
+when the second task never started.
+
+The message carries the object size, which is the cheapest available check that
+the run produced a real database: a screen that matched nothing still publishes,
+and would otherwise arrive as a plausible-looking email a few hundred KB short
+of the usual figure.
+
+`aws_s3_bucket_notification` manages a bucket's **whole** notification
+configuration — it does not merge. The data bucket predates this stack and holds
+unrelated objects, so its configuration was confirmed empty before this was
+added; adding it to a bucket with an existing lambda or queue trigger would
+silently drop that trigger.
+
+### 8.5 Retries — deliberately omitted
 
 EventBridge Scheduler's `retry_policy` retries the **`RunTask` API call**, not a
 task that ran and exited non-zero. Retrying on exit code needs Step Functions
@@ -681,6 +722,7 @@ infra/
 ├── schedule.tf              two EventBridge Scheduler schedules + DLQ
 ├── storage.tf               versioning and expiry on the existing data bucket
 ├── observability.tf         log groups, metric filters, alarms, SNS, EventBridge rules
+├── notifications.tf         success topic, bucket->EventBridge, published rule
 ├── variables.tf
 ├── outputs.tf
 ├── terraform.tfvars.example   (real one is gitignored)
