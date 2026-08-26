@@ -8,6 +8,7 @@ from analysis import (
     MAX_STALENESS_DAYS,
     _sample_price_history,
     compute_window_growth,
+    daily_tail_days,
     endpoint_window_for,
     load_price_data,
 )
@@ -185,8 +186,8 @@ def history_frame(dates, tickers=("AAA",)):
     )
 
 
-def kept_dates(frame, mode):
-    out = _sample_price_history(frame, mode)
+def kept_dates(frame, mode, tail_days=0, return_basis="google_finance"):
+    out = _sample_price_history(frame, mode, tail_days, return_basis)
     return [d.strftime("%Y-%m-%d") for d in out["stock_price_date"]]
 
 
@@ -271,6 +272,94 @@ def test_sampling_an_empty_frame_is_safe():
     """No qualifying ticker is an ordinary outcome, not an error."""
     empty = history_frame(["2026-01-05"]).iloc[0:0]
     assert _sample_price_history(empty, "weekly").empty
+
+
+# ------------------------------------------------------------- daily tail
+
+
+@pytest.mark.parametrize(
+    "windows,expected",
+    [
+        ([{"months": 12}, {"months": 1}, {"days": 7}], 7),
+        ([{"days": 5}, {"days": 30}], 30),
+        # Months only: nothing to protect, so nothing changes.
+        ([{"months": 12}, {"months": 1}], 0),
+        ([], 0),
+    ],
+)
+def test_daily_tail_covers_the_longest_day_window(windows, expected):
+    assert daily_tail_days(windows) == expected
+
+
+# Aug 2026: the 18th-21st is Tue-Fri, the 24th-25th the following Mon-Tue.
+SPIKE_WEEK = [
+    "2026-08-06",
+    "2026-08-07",
+    "2026-08-13",
+    "2026-08-14",
+    "2026-08-18",
+    "2026-08-19",
+    "2026-08-20",
+    "2026-08-21",
+    "2026-08-24",
+    "2026-08-25",
+]
+
+
+def test_weekly_alone_cannot_chart_a_seven_day_window():
+    """The MRNA case: two points, neither of them the one the screen used.
+
+    A ticker that doubled on Wednesday the 19th is drawn as a straight line
+    from Friday to Tuesday, so the chart disagrees with the percentage that
+    listed it.
+    """
+    kept = kept_dates(history_frame(SPIKE_WEEK), "weekly")
+    assert [d for d in kept if d >= "2026-08-18"] == ["2026-08-21", "2026-08-25"]
+
+
+def test_daily_tail_keeps_every_session_of_the_short_window():
+    """Same frame, same mode: the last 7 days survive intact."""
+    assert kept_dates(history_frame(SPIKE_WEEK), "weekly", tail_days=7) == [
+        # Older weeks stay thinned -- the tail is not "publish everything".
+        "2026-08-07",
+        "2026-08-14",
+        # The window the 7-day screen measured, session by session.
+        "2026-08-18",
+        "2026-08-19",
+        "2026-08-20",
+        "2026-08-21",
+        "2026-08-24",
+        "2026-08-25",
+    ]
+
+
+def test_a_session_in_both_the_tail_and_a_period_end_is_kept_once():
+    """Friday the 21st closes its week and sits inside the tail."""
+    kept = kept_dates(history_frame(SPIKE_WEEK), "weekly", tail_days=7)
+    assert kept.count("2026-08-21") == 1
+
+
+def test_tail_opens_on_the_session_the_screen_measured_from():
+    """A calendar cutoff would drop the close the percentage came from.
+
+    With the 18th missing -- a holiday, or a halt -- the "google_finance"
+    window opens on the 17th, so that is the first point a chart must carry.
+    """
+    dates = sorted([d for d in SPIKE_WEEK if d != "2026-08-18"] + ["2026-08-17"])
+    assert "2026-08-17" in kept_dates(history_frame(dates), "weekly", tail_days=7)
+
+
+def test_robust_basis_opens_the_tail_inside_the_window():
+    """The "robust" basis opens after the anchor, and so does its tail."""
+    dates = sorted([d for d in SPIKE_WEEK if d != "2026-08-18"] + ["2026-08-17"])
+    kept = kept_dates(history_frame(dates), "weekly", tail_days=7, return_basis="robust")
+    assert "2026-08-17" not in kept
+    assert "2026-08-19" in kept
+
+
+def test_no_day_window_leaves_the_series_exactly_as_it_was():
+    frame = history_frame(SPIKE_WEEK)
+    assert kept_dates(frame, "weekly", tail_days=0) == kept_dates(frame, "weekly")
 
 
 # ------------------------------------------------------------------ threshold column

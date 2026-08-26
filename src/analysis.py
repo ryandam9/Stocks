@@ -22,6 +22,7 @@ leave an earlier run's results in place to be republished as current.
 
 import os
 import sys
+from collections.abc import Sequence
 from typing import Any
 
 import click
@@ -246,18 +247,29 @@ def select_window(df: pd.DataFrame, cutoff: pd.Timestamp, return_basis: str) -> 
     exchanges keep different holiday calendars, and a halted ticker has no
     print on a day its neighbours do.
     """
+    return df[df["stock_price_date"] >= window_start(df, cutoff, return_basis)]
+
+
+def window_start(df: pd.DataFrame, cutoff: pd.Timestamp, return_basis: str) -> pd.Series:
+    """The date each row's ticker opens its window on, aligned to ``df.index``.
+
+    Split out of :func:`select_window` so the published price history can keep
+    exactly the sessions the screen measured over. A calendar cutoff is not
+    the same set: under "google_finance" a window whose anchor falls on a
+    holiday opens on the session *before* it, and a chart cut at the calendar
+    date would omit the very close the percentage was measured from.
+    """
     if return_basis != RETURN_BASIS_GOOGLE_FINANCE:
-        return df[df["stock_price_date"] >= cutoff]
+        return pd.Series(cutoff, index=df.index)
 
     prior = df[df["stock_price_date"] <= cutoff]
     if prior.empty:
-        return df[df["stock_price_date"] >= cutoff]
+        return pd.Series(cutoff, index=df.index)
 
     # Tickers listed after the anchor have no prior session; they keep the
     # plain cutoff and are dropped later by the coverage rule anyway.
     starts = prior.groupby("ticker", sort=False)["stock_price_date"].max()
-    row_start = df["ticker"].map(starts).fillna(cutoff)
-    return df[df["stock_price_date"] >= row_start]
+    return df["ticker"].map(starts).fillna(cutoff)
 
 
 def window_label_short(window: dict) -> str:
@@ -430,7 +442,35 @@ def _growth_output_path(eod_path: str, suffix: str) -> str:
     return f"{stem}{suffix}{extension or '.csv'}"
 
 
-def _sample_price_history(combined: pd.DataFrame, sampling: str) -> pd.DataFrame:
+def _tail_note(tail_days: int) -> str:
+    """How the daily tail is described in a run's output."""
+    return f" + last {tail_days}d daily" if tail_days > 0 else ""
+
+
+def daily_tail_days(windows: Sequence[dict]) -> int:
+    """How many days at the end of the series must stay unsampled.
+
+    Weekly sampling publishes one point a week, which over a 7-day window is
+    one or two points -- and neither need be the session the screen measured
+    from. A ticker that doubled on the Wednesday is then charted as a straight
+    line between two Fridays, so the chart contradicts the very number that
+    put the ticker on the screen. It is not a wrong price; it is a series too
+    coarse to hold the event.
+
+    Day-based windows are the only ones whose period is short enough for that
+    to happen, so the tail is exactly the longest of them: nothing to
+    configure and get wrong, nothing kept for a window nobody screens, and no
+    change at all to a config that screens months only.
+    """
+    return max((int(w["days"]) for w in windows if "days" in w), default=0)
+
+
+def _sample_price_history(
+    combined: pd.DataFrame,
+    sampling: str,
+    tail_days: int = 0,
+    return_basis: str = RETURN_BASIS_GOOGLE_FINANCE,
+) -> pd.DataFrame:
     """Thin published price history down to one row per ticker per period.
 
     Every mode keeps the **last trading day** of each period rather than a
@@ -442,8 +482,17 @@ def _sample_price_history(combined: pd.DataFrame, sampling: str) -> pd.DataFrame
     Keeping each period's last session also guarantees the series ends on the
     newest close, which is the point a chart is read from.
 
+    The last ``tail_days`` are exempt and keep every session, so a short
+    window is charted at the resolution it was measured at. The tail is taken
+    with the same rule the screen uses -- :func:`window_start`, not a plain
+    calendar cutoff -- so the first plotted point *is* the screen's opening
+    close rather than the next one after it.
+
     Args:
         sampling: one of :data:`config.PRICE_HISTORY_SAMPLING`.
+        tail_days: recent days to keep daily, from :func:`daily_tail_days`.
+        return_basis: how the tail resolves its opening session, matching the
+            screen's own ``analysis.return_basis``.
 
     Returns:
         ``combined`` unchanged for ``"daily"``, else its sampled subset.
@@ -464,7 +513,16 @@ def _sample_price_history(combined: pd.DataFrame, sampling: str) -> pd.DataFrame
         raise ValueError(f"unknown price_history_sampling: {sampling!r}")
 
     last = combined.groupby(["ticker", period], sort=False)["stock_price_date"].transform("max")
-    return combined[dates.eq(last)]
+    keep = dates.eq(last)
+
+    if tail_days > 0:
+        # Measured from the newest session in the frame rather than each
+        # ticker's own last print, so every ticker's tail spans the same
+        # calendar days the screen's window did.
+        cutoff = dates.max() - pd.Timedelta(days=tail_days)
+        keep |= dates.ge(window_start(combined, cutoff, return_basis))
+
+    return combined[keep]
 
 
 # Per-row facts kept in the universe-wide history table. Everything constant
@@ -512,6 +570,8 @@ def build_universe_history(
     latest_date: pd.Timestamp,
     sampling: str = "weekly",
     months: int = UNIVERSE_HISTORY_MONTHS,
+    tail_days: int = 0,
+    return_basis: str = RETURN_BASIS_GOOGLE_FINANCE,
 ) -> str:
     """Write a trailing-``months`` sampled price history for the whole universe.
 
@@ -535,7 +595,7 @@ def build_universe_history(
     cutoff = latest_date - pd.DateOffset(months=months)
 
     history = df[df["stock_price_date"] >= cutoff]
-    sampled = _sample_price_history(history, sampling)
+    sampled = _sample_price_history(history, sampling, tail_days, return_basis)
 
     # adj_close is absent from price files written before it was recorded.
     # Emit the column regardless so the published table's schema does not
@@ -551,8 +611,8 @@ def build_universe_history(
     atomic_write_csv(sampled, output_path)
     tickers = sampled["ticker"].nunique() if not sampled.empty else 0
     print(
-        f"\nUniverse history ({sampling}, {months}m): {len(sampled):,} rows for "
-        f"{tickers:,} tickers -> {output_path}"
+        f"\nUniverse history ({sampling}{_tail_note(tail_days)}, {months}m): "
+        f"{len(sampled):,} rows for {tickers:,} tickers -> {output_path}"
     )
     return output_path
 
@@ -564,6 +624,8 @@ def build_combined_growth(
     abbreviations: dict[str, str],
     run_id: str = "",
     sampling: str = "weekly",
+    tail_days: int = 0,
+    return_basis: str = RETURN_BASIS_GOOGLE_FINANCE,
 ) -> str:
     """Write sampled price history for every ticker that grew in any window.
 
@@ -612,7 +674,7 @@ def build_combined_growth(
 
     # Sample before formatting the date: the sampler needs real datetimes.
     daily_rows = len(combined)
-    combined = _sample_price_history(combined, sampling)
+    combined = _sample_price_history(combined, sampling, tail_days, return_basis)
 
     combined["stock_price_date"] = combined["stock_price_date"].dt.strftime("%Y-%m-%d")
 
@@ -625,8 +687,8 @@ def build_combined_growth(
     atomic_write_csv(combined, output_path)
     kept = f"{len(combined) / daily_rows:.0%} of daily" if daily_rows else "empty"
     print(
-        f"\nCombined growth history ({sampling}): {len(combined):,} rows for "
-        f"{len(summary):,} tickers, {kept} -> {output_path}"
+        f"\nCombined growth history ({sampling}{_tail_note(tail_days)}): "
+        f"{len(combined):,} rows for {len(summary):,} tickers, {kept} -> {output_path}"
     )
     return output_path
 
@@ -662,6 +724,10 @@ def analyze_stocks(
             # cannot interpret it from the rows alone.
             "include_price_history": settings.include_price_history,
             "price_history_sampling": settings.price_history_sampling,
+            # The history is sampled *except* for this many trailing days, so
+            # a consumer reading row spacing cannot infer the mode from the
+            # rows alone.
+            "price_history_daily_tail_days": daily_tail_days(settings.windows),
             "include_universe_history": settings.include_universe_history,
             "universe_history_months": UNIVERSE_HISTORY_MONTHS,
             "windows": settings.windows,
@@ -788,6 +854,8 @@ def analyze_stocks(
             abbreviations,
             run_id,
             sampling=settings.price_history_sampling,
+            tail_days=daily_tail_days(settings.windows),
+            return_basis=settings.return_basis,
         )
         outputs["combined"] = {"path": combined_path}
     else:
@@ -811,6 +879,8 @@ def analyze_stocks(
                 cfg.eod_csv,
                 latest_date,
                 sampling=settings.price_history_sampling,
+                tail_days=daily_tail_days(settings.windows),
+                return_basis=settings.return_basis,
             ),
             "table": cfg.universe_history_table,
         }

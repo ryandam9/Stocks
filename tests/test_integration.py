@@ -7,6 +7,7 @@ stale-data guard.
 
 import csv
 import os
+from datetime import UTC, datetime
 
 import pandas as pd
 import pytest
@@ -404,11 +405,26 @@ def test_fetch_requests_an_exclusive_end_past_today(tmp_path, monkeypatch):
 
     Passing today's date drops today's completed session, so the fetcher must
     request tomorrow and let the provider return whatever has actually closed.
+
+    "Tomorrow" is the *exchange's*, not the host's. The clock is frozen at
+    03:03 UTC, when a UTC machine has rolled over to the 26th and New York is
+    still on the evening of the 25th, because that is the only time the two
+    definitions differ -- and asserting against the host's date made this test
+    fail for those hours of every single day.
     """
     import fetch_prices
 
     cfg = build_project(tmp_path, monkeypatch)
     write_universe(cfg, [("AAA", "Alpha Inc")])
+
+    frozen = datetime(2026, 8, 26, 3, 3, tzinfo=UTC)  # 23:03 on the 25th in New York
+
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return frozen.astimezone(tz) if tz else frozen.replace(tzinfo=None)
+
+    monkeypatch.setattr(fetch_prices, "datetime", FrozenDatetime)
 
     captured = {}
 
@@ -420,6 +436,7 @@ def test_fetch_requests_an_exclusive_end_past_today(tmp_path, monkeypatch):
     fetcher = fetch_prices.YahooFinanceDataFetcher("US", "stocks", period=30)
     fetcher.fetch_historical_data()
 
-    today = pd.Timestamp.now().normalize()
-    assert pd.Timestamp(captured["end"]) == today + pd.Timedelta(days=1)
-    assert pd.Timestamp(captured["start"]) == today - pd.Timedelta(days=30)
+    # The day after the exchange's date, which is the 26th -- not the 27th,
+    # which is what the host's own calendar would have asked for.
+    assert captured["end"] == "2026-08-26"
+    assert captured["start"] == "2026-07-26"
