@@ -54,6 +54,11 @@ config:
     # (11.9% vs 14.1% worst-case deviation), because month anchors cluster --
     # a month's last session and the next month's first are one day apart.
     price_history_sampling: weekly
+    # Sampling is suspended for the last N days, where N is the longest
+    # day-based window below. Weekly leaves one or two points across a 7-day
+    # window and neither need be the session the screen measured from, so a
+    # ticker that moved mid-week is charted as a flat line that disagrees with
+    # its own percentage. Derived, not configured: no day window, no tail.
     windows:
       - {months: 12, label: 1_year, threshold: 25.0}
       - {months: 6, label: 6_months, threshold: 25.0}

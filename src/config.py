@@ -179,6 +179,11 @@ class AnalysisSettings:
     # being denser. Month anchors cluster -- the last trading day of a month
     # and the first of the next are the *same* session one day apart, so those
     # points are near-duplicates that buy no accuracy.
+    #
+    # Sampling is suspended for the trailing days covered by the longest
+    # day-based window (see analysis.daily_tail_days): a week of history
+    # sampled weekly is one or two points, which cannot show the move that put
+    # the ticker on the screen in the first place.
     price_history_sampling: str = "weekly"
     # Whether to publish a trailing-year price history for the *whole*
     # universe -- every ticker in the ticker file -- rather than only the ones

@@ -1082,6 +1082,20 @@ ends on the newest close. Measured on the US universe:
 | `month_end` | 13 | 22,870 | ~2.5 MB |
 | off | — | — | 0.86 MB |
 
+**The most recent days are exempt.** Sampling is what a chart needs for a year
+of history and exactly what it must not do for a week of it. Over a 7-day
+window, weekly leaves one or two points — and neither need be the session the
+screen measured from, so a ticker that doubled on the Wednesday is drawn as a
+straight line between two Fridays and the chart contradicts the percentage that
+listed it. Every session inside the longest day-based window (`{days: 7, …}`)
+is therefore kept whatever the mode, at a cost of about 4 rows a ticker. There
+is nothing to configure: a config that screens month windows only has no day
+window, so it has no tail and is unchanged.
+
+The tail opens where the screen opens — the last session on or before the
+anchor under `google_finance` — so the first plotted point is the close the
+percentage was measured from rather than the next one after it.
+
 **Why not the 1st, 15th and last of each month?** It sounds denser — 36 rows a
 ticker — but a month's last trading day and the next month's first are the
 *same consecutive session*, true for 12 of 12 boundaries in the last year. So a
