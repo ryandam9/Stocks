@@ -109,37 +109,54 @@ code or config change* in the root README.
 **Pause the schedule** — set `schedule_enabled = false` and apply. The
 schedules stay defined but stop firing.
 
-## Two topics, two subscriptions
+## Where the mail goes
 
-| Topic | Sends | Volume |
+| Path | Sends | Volume |
 |---|---|---|
-| `stocks-alerts` | a run broke, or no run happened in 24 h | ~0/day |
-| `stocks-notifications` | `us.db` / `asx.db` reached S3 | ~2/day |
-
-Both subscribe `alert_email` unless `notify_email` is set to something else,
-and **each needs its own confirmation click** — AWS sends one email per
-subscription. Until confirmed, the subscription reads `PendingConfirmation` and
-nothing is delivered.
+| SNS `stocks-alerts` | a run broke, or no run happened in 24 h | ~0/day |
+| SES, via the `stocks-notify` lambda | `us.db` / `asx.db` reached S3 | ~2/day |
 
 They are separate because routine success at ~2/day and exceptional failure at
-~0/day do not belong on one topic: the volume trains you to filter the topic,
-and the filter then swallows the alerts. The success message is driven by the
-S3 object rather than by ECS task completion — a task can exit 0 having
-published nothing, so "task completed" would read as success on exactly the
-night there is no new data. See §8.4 of the spec.
+~0/day do not belong on one channel: the volume trains you to filter it, and
+the filter then swallows the alerts. The success message is driven by the S3
+object rather than by ECS task completion — a task can exit 0 having published
+nothing, so "task completed" would read as success on exactly the night there
+is no new data. See §8.4 of the spec.
 
-The success message quotes the time in Melbourne local, labelled `AEST` or
-`AEDT`. EventBridge substitutes values into a message but cannot convert them,
-and the only timestamp it has is UTC, so the event goes through the
-`stocks-notify` lambda (`infra/lambda/notify_published.py`) instead of straight
-to SNS. Change the zone by changing `local.timezone` in `main.tf` — the same
-value the schedules use, so the email and the cron can never quote two
+**Alerts.** `alert_email` is subscribed to the topic and AWS emails one
+confirmation link on first apply. Until it is clicked the subscription reads
+`PendingConfirmation` and nothing is delivered.
+
+```bash
+aws sns list-subscriptions --region ap-southeast-2 \
+  --query 'Subscriptions[?ends_with(TopicArn,`stocks-alerts`)].[Endpoint,SubscriptionArn]' \
+  --output text
+```
+
+**Success mail.** Sent through SES rather than SNS, because an SNS email
+subscription is plain text only — quoted string, "AWS Notification Message"
+subject, unsubscribe footer. The lambda
+(`infra/lambda/notify_published.py`) renders an HTML body with the time in
+Melbourne local, labelled `AEST` or `AEDT`, and a plain-text alternative
+alongside it. Change the zone by changing `local.timezone` in `main.tf` — the
+same value the schedules use, so the mail and the cron can never quote two
 different clocks. The lambda is redeployed by `terraform apply`: the archive
 provider rezips the file and `source_code_hash` notices.
 
-**Read a run's logs** — `/ecs/stocks/us` and `/ecs/stocks/asx`. A healthy run
-ends with `Uploaded to s3://…`; a misconfigured one ends with
-`Skipping S3 upload (…)`, which is what the `upload-skipped` alarm watches for.
+Two SES identities must verify before anything is delivered:
+
+| Identity | Verifies when | Needed because |
+|---|---|---|
+| `notify_domain` | the DKIM CNAMEs terraform wrote resolve, minutes | mail must be signed by a domain you control, or DMARC alignment fails and it lands in spam |
+| the recipient address | you click the link AWS emails | the SES sandbox refuses unverified recipients, and a new account is in the sandbox |
+
+```bash
+aws sesv2 get-email-identity --region ap-southeast-2 \
+  --email-identity <notify_domain> --query VerifiedForSendingStatus
+```
+
+While either is unverified every publish errors, and `stocks-notify-failed`
+alarms to the alert topic.
 
 ## What is deliberately absent
 

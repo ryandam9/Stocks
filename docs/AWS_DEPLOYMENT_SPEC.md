@@ -508,7 +508,7 @@ flowchart TD
     RAN -->|No| H["Heartbeat alarm<br/>no 'Uploaded to' in 24 h"]
     RAN -->|Yes| EXIT{"Container<br/>exit code"}
 
-    EXIT -->|0| OK["Database published<br/>S3 event -> stocks-notify -> stocks-notifications"]
+    EXIT -->|0| OK["Database published<br/>S3 event -> stocks-notify -> SES"]
     EXIT -->|1| E1["Error<br/>bug, network, IAM"]
     EXIT -->|2| E2["Stale data<br/>provider behind"]
     EXIT -->|3| E3["Incomplete fetch<br/>< 95% of tickers"]
@@ -584,7 +584,7 @@ only evidence that no detector fired, not that a database exists.
 |---|---|
 | Source | S3 `Object Created` via EventBridge, **not** ECS task completion |
 | Filter | bucket + key in (`us.db`, `asx.db`) |
-| Target | Lambda `stocks-notify` → SNS `stocks-notifications` → email |
+| Target | Lambda `stocks-notify` → SES → inbox |
 | Volume | one message per database per run, ~2/day |
 
 **Why the S3 object rather than the ECS task.** A task can exit 0 having
@@ -594,10 +594,10 @@ email would then arrive looking like success on exactly the night there is no
 new data. Watching the object means the email cannot be sent unless the
 database is really in the bucket.
 
-**Why a second SNS topic.** Routine success is ~2 messages a day and
-exceptional failure is ~0. On one topic the volume trains you to filter the
-topic, and the filter then swallows the alerts too. Split, `stocks-alerts` stays
-rare enough to be worth reading.
+**Why a separate channel from the alerts.** Routine success is ~2 messages a
+day and exceptional failure is ~0. Delivered together the volume trains you to
+filter them, and the filter then swallows the alerts too. Apart, `stocks-alerts`
+stays rare enough to be worth reading.
 
 **Why one email per database, not one per night.** The runs are 2h15m apart
 (07:15 and 09:30 Melbourne). A combined message would have to hold the ASX
@@ -609,22 +609,39 @@ the run produced a real database: a screen that matched nothing still publishes,
 and would otherwise arrive as a plausible-looking email a few hundred KB short
 of the usual figure.
 
-**Why a lambda between the event and the email.** The message is stated in
-Melbourne local time — `18:39 AEST on Tue 25 Aug 2026` — because everything
-else about this stack is: the schedules run on `Australia/Melbourne`, this
-document quotes 07:15 and 09:30, and the reader is in that zone. EventBridge's
-input transformer substitutes values and never converts them, so an SNS target
-can quote nothing but the UTC `$.time`, leaving a correction of +10 or +11
-hours — and a date change — to be done in the reader's head at breakfast. The
-function (`infra/lambda/notify_published.py`, ~60 lines, no dependencies beyond
-the runtime's boto3) formats that timestamp, names the offset in force that
-night, and publishes. It is zipped at plan time by the `hashicorp/archive`
-provider, so the source stays a readable `.py` in the repository.
+**Why a lambda between the event and the email.** Two reasons, the time and
+the format.
+
+The message is stated in Melbourne local time — `07:34 AEST · Wed 26 Aug 2026`
+— because everything else about this stack is: the schedules run on
+`Australia/Melbourne`, this document quotes 07:15 and 09:30, and the reader is
+in that zone. EventBridge's input transformer substitutes values and never
+converts them, so a direct target can quote nothing but the UTC `$.time`,
+leaving a correction of +10 or +11 hours — and a date change — to be done in
+the reader's head at breakfast.
+
+And an SNS email subscription is plain text only: a quoted-string body under
+the subject "AWS Notification Message", with an unsubscribe footer stapled on.
+SES accepts an HTML body and a subject of our choosing, but only a caller can
+build one. The function (`infra/lambda/notify_published.py`, no dependencies
+beyond the runtime's `boto3`) formats the timestamp, names the offset in force,
+renders the HTML and a plain-text alternative, and calls `ses:SendEmail`. It is
+zipped at plan time by the `hashicorp/archive` provider, so the source stays a
+readable `.py` in the repository.
+
+**Sending identity.** `notify_domain` is verified with Easy DKIM and its three
+CNAMEs are written into the domain's Route 53 hosted zone by terraform, so the
+mail is signed by a domain the account controls. An unaligned From — `gmail.com`
+on a message signed by `amazonses.com` — fails DMARC and lands in spam. The
+recipient address is verified as an identity too: only the SES sandbox requires
+it, but a new account is in the sandbox and an unverified recipient there fails
+the send rather than queueing it.
 
 The trade is a new failure mode: the database lands, the notifier throws, and
 the missing email looks exactly like a missing run. `stocks-notify-failed`
 alarms on the function's `Errors` metric to `stocks-alerts` — the alert topic,
-not the notification topic, which is the thing that is broken.
+not the path that is broken. It is also what reports an unverified SES
+identity, which is the one way this fails on a first apply.
 
 `aws_s3_bucket_notification` manages a bucket's **whole** notification
 configuration — it does not merge. The data bucket predates this stack and holds
@@ -739,8 +756,9 @@ infra/
 ├── schedule.tf              two EventBridge Scheduler schedules + DLQ
 ├── storage.tf               versioning and expiry on the existing data bucket
 ├── observability.tf         log groups, metric filters, alarms, SNS, EventBridge rules
-├── notifications.tf         success topic, bucket->EventBridge, published rule,
-│                            notifier lambda + its role, log group and alarm
+├── notifications.tf         bucket->EventBridge, published rule, SES sender
+│                            identity + DKIM records, notifier lambda + its
+│                            role, log group and alarm
 ├── lambda/
 │   └── notify_published.py  formats the S3 event in local time, publishes to SNS
 ├── variables.tf
@@ -756,12 +774,13 @@ backend it is creating and so keeps state locally. Locking is S3-native
 `.tflock` object beside the state file, so there is no DynamoDB table to
 provision, pay for, or keep in step with the bucket.
 
-`terraform plan` against the account, before the notifier lambda of §8.4 was
-added: **43 to add, 0 to change, 0 to destroy** — the versioning and lifecycle
-rules attach to the existing data bucket without replacing it. The lambda adds
-its function, role, inline policy, log group, invoke permission and error
-alarm, and removes the SNS topic policy that let EventBridge publish directly;
-re-run `plan` for the current figure rather than trusting this one.
+`terraform plan` against the account, before the notifier of §8.4 was added:
+**43 to add, 0 to change, 0 to destroy** — the versioning and lifecycle rules
+attach to the existing data bucket without replacing it. The notifier adds its
+lambda, role, inline policy, log group, invoke permission, error alarm, two SES
+identities and three Route 53 records, and removes the SNS notification topic
+and its subscription; re-run `plan` for the current figure rather than trusting
+this one.
 
 The alternative, a DynamoDB lock table via the backend's `dynamodb_table`
 parameter, is deprecated as of Terraform 1.11 and warns on every `init`. It

@@ -35,6 +35,18 @@ variable "notify_email" {
   }
 }
 
+variable "notify_domain" {
+  description = "Domain the success mail is sent from, e.g. example.com. Must have a public Route 53 hosted zone in this account: terraform publishes the DKIM records into it."
+  type        = string
+
+  validation {
+    # A bare registrable domain. SES verifies the domain, not a URL or an
+    # address, and the DKIM records are written relative to it.
+    condition     = can(regex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$", var.notify_domain))
+    error_message = "Give a bare domain name -- no scheme, no @, no trailing dot."
+  }
+}
+
 variable "vpc_cidr" {
   description = "CIDR for the VPC this stack creates. Must not overlap anything you peer with."
   type        = string

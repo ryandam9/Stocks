@@ -38,9 +38,13 @@ output "alert_topic_arn" {
   value       = aws_sns_topic.alerts.arn
 }
 
-output "notification_topic_arn" {
-  description = "Emails once each database reaches S3. Confirm the subscription AWS sends, or nothing is delivered."
-  value       = aws_sns_topic.notifications.arn
+output "notification_email" {
+  description = "Where the database-published mail comes from and goes to. Both SES identities must verify before anything is delivered: the domain within minutes of the DKIM records publishing, the recipient when you click the link AWS emails."
+  value = {
+    from   = local.notify_from
+    to     = local.notify_email
+    verify = "aws sesv2 get-email-identity --region ${var.region} --email-identity ${var.notify_domain} --query VerifiedForSendingStatus"
+  }
 }
 
 output "schedules" {
