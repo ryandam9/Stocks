@@ -164,6 +164,17 @@ data "aws_iam_policy_document" "notify" {
   }
 
   statement {
+    sid     = "ReadThePublishedDatabase"
+    actions = ["s3:GetObject"]
+    # The mail reports the tables, their row counts and the span of price
+    # history, which means opening the file the event announced. Read is all
+    # it ever needs, and only of the two objects this stack publishes.
+    resources = [
+      for u in local.universes : "arn:aws:s3:::${var.data_bucket}/${u.database}"
+    ]
+  }
+
+  statement {
     sid       = "WriteItsOwnLogs"
     actions   = ["logs:CreateLogStream", "logs:PutLogEvents"]
     resources = ["${aws_cloudwatch_log_group.notify.arn}:*"]
@@ -191,10 +202,13 @@ resource "aws_lambda_function" "notify" {
   handler          = "notify_published.handler"
   runtime          = "python3.12"
 
-  # One SES call. The default 3s is generous already; 10s only covers a cold
-  # start that has to resolve credentials on a bad day.
-  timeout     = 10
-  memory_size = 128
+  # It downloads the database before sending, so the budget is a transfer and
+  # a handful of COUNT(*) queries rather than one API call: us.db is the large
+  # one at ~8 MB. Memory is what buys CPU and network throughput on Lambda,
+  # which is why 256 rather than the 128 the work itself needs; /tmp is 512 MB
+  # by default and holds the download.
+  timeout     = 60
+  memory_size = 256
 
   environment {
     variables = {

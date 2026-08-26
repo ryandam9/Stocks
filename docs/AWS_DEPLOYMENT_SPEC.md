@@ -629,6 +629,21 @@ renders the HTML and a plain-text alternative, and calls `ses:SendEmail`. It is
 zipped at plan time by the `hashicorp/archive` provider, so the source stays a
 readable `.py` in the repository.
 
+**What the message carries.** The S3 event names a bucket, a key, a size and a
+time. That is enough to know a run finished and not enough to know what it
+produced, so the function downloads the object to `/tmp` and opens it read-only:
+the mail lists every table with its row count, the earliest and latest
+`stock_price_date` across every table that has one, and names the universe from
+`run_metadata` rather than inferring it from the key. Size stays in the message
+as the cheapest check that the database is not short.
+
+The inspection is best-effort by design. A failed download, a missing
+permission or a file that is not SQLite degrades to the shorter mail rather
+than to an exception, because the notification's purpose — a database landed —
+does not depend on it. `s3:GetObject` is scoped to the two published keys, and
+`/tmp` is cleared after each invocation since execution environments are reused
+across databases.
+
 **Sending identity.** `notify_domain` is verified with Easy DKIM and its three
 CNAMEs are written into the domain's Route 53 hosted zone by terraform, so the
 mail is signed by a domain the account controls. An unaligned From — `gmail.com`

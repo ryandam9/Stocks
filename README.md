@@ -521,6 +521,20 @@ row above — so a "task completed" email would read as success on exactly the
 night there is no new data. It carries the object's size, the cheapest check
 that the run produced a real database rather than a short one.
 
+**What it says.** The mail opens the database it is announcing and reports
+what is in it: the tables with their row counts, the span of price history, and
+the size. The event on its own says a file of some size arrived, which is
+enough to know a run finished and not enough to know what it produced — the
+figures you would otherwise open a SQL client to check. The universe is named
+from the database's own `run_metadata` rather than guessed from the filename,
+so the sentence says what was actually screened.
+
+That means the lambda reads the object (`s3:GetObject`, scoped to the two
+database keys) into `/tmp` and queries it read-only. If any of that fails —
+a permission, a slow download, a file that is not SQLite — it logs and sends
+the shorter mail anyway. The notification's job is to say a database landed,
+and it can still say that without the table list.
+
 **Why SES and not a second SNS topic.** An SNS email subscription sends plain
 text only: the body arrives as a quoted string under the subject "AWS
 Notification Message", with an unsubscribe footer stapled on. SES takes an HTML

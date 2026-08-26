@@ -8,6 +8,8 @@ the values landing in the right places and being escaped on the way in.
 
 import importlib.util
 import os
+import shutil
+import sqlite3
 import sys
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -41,8 +43,34 @@ def event(time="2026-08-25T21:34:50Z", key="asx.db", size=1982464, bucket="hive-
     }
 
 
-def details(**kwargs):
-    return notify.details_for(event(**kwargs), MELBOURNE)
+@pytest.fixture
+def published_db(tmp_path):
+    """A database shaped like a real published one, small enough to build here.
+
+    Two tables carry stock_price_date and disagree about their span, which is
+    the case the date range has to get right: the mail reports the history the
+    database holds, not one table's view of it.
+    """
+    path = tmp_path / "asx.db"
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE ASX_1_YEAR_HISTORY (ticker TEXT, stock_price_date TEXT)")
+    conn.executemany(
+        "INSERT INTO ASX_1_YEAR_HISTORY VALUES ('VAS', ?)",
+        [("2025-09-02",), ("2026-01-05",), ("2026-08-25",)],
+    )
+    conn.execute("CREATE TABLE asx_etf_growth (ticker TEXT, stock_price_date TEXT)")
+    conn.executemany("INSERT INTO asx_etf_growth VALUES ('VAS', ?)", [("2026-03-10",)] * 2)
+    conn.execute("CREATE TABLE asx_etf_growth_7_days (ticker TEXT)")
+    conn.execute("INSERT INTO asx_etf_growth_7_days VALUES ('VAS')")
+    conn.execute("CREATE TABLE run_metadata (exchange TEXT, instrument_type TEXT)")
+    conn.execute("INSERT INTO run_metadata VALUES ('ASX', 'etf')")
+    conn.commit()
+    conn.close()
+    return path
+
+
+def details(contents=None, **kwargs):
+    return notify.details_for(event(**kwargs), MELBOURNE, contents)
 
 
 # ------------------------------------------------------------------- time
@@ -114,7 +142,7 @@ def test_format_size(size, expected):
 
 def test_subject_names_the_database_and_its_size():
     """The two things worth knowing without opening the mail."""
-    assert notify.subject_for(details()) == "stocks: asx.db is live (1.89 MB)"
+    assert notify.subject_for(details()) == "stocks: asx.db is ready to use (1.89 MB)"
 
 
 def test_text_body_carries_the_local_time_and_no_utc_stamp():
@@ -129,7 +157,7 @@ def test_html_body_is_a_whole_document_carrying_the_same_facts():
     body = notify.render_html(details())
     assert body.startswith("<!doctype html>")
     assert body.rstrip().endswith("</html>")
-    assert "asx.db is live" in body
+    assert "asx.db is ready to use" in body
     assert "07:34 AEST" in body
     assert "Wed 26 Aug 2026" in body
     assert "1.89 MB" in body
@@ -148,24 +176,119 @@ def test_html_escapes_the_values_it_interpolates():
     assert "a&lt;script&gt;.db" in body
 
 
+# -------------------------------------------------------------- contents
+
+
+def test_inspect_reports_every_table_and_its_row_count(published_db):
+    found = notify.inspect_database(str(published_db))
+    assert found["tables"] == [
+        ("ASX_1_YEAR_HISTORY", 3),
+        ("asx_etf_growth", 2),
+        ("asx_etf_growth_7_days", 1),
+        ("run_metadata", 1),
+    ]
+
+
+def test_inspect_spans_every_table_that_carries_dates(published_db):
+    """Not one table's range: the earliest and latest the database holds."""
+    found = notify.inspect_database(str(published_db))
+    assert (found["first_date"], found["last_date"]) == ("02 Sep 2025", "25 Aug 2026")
+
+
+def test_inspect_names_the_universe_from_run_metadata(published_db):
+    assert notify.inspect_database(str(published_db))["universe"] == "ASX ETF"
+
+
+def test_inspect_survives_a_database_without_run_metadata(tmp_path):
+    """A publish that never reached the analysis manifest still gets a mail."""
+    path = tmp_path / "bare.db"
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE prices (ticker TEXT)")
+    conn.commit()
+    conn.close()
+
+    found = notify.inspect_database(str(path))
+    assert found["tables"] == [("prices", 0)]
+    assert "universe" not in found
+    assert "first_date" not in found
+
+
+@pytest.mark.parametrize(
+    ("exchange", "kind", "expected"),
+    [("ASX", "etf", "ASX ETF"), ("US", "stocks", "US stocks"), ("ASX", "", "ASX")],
+)
+def test_universe_label(exchange, kind, expected):
+    assert notify.universe_label(exchange, kind) == expected
+
+
+def test_an_unreadable_database_costs_the_detail_not_the_mail(monkeypatch):
+    """The mail's job is to say a database landed; it can still say that."""
+
+    class BrokenS3:
+        def download_file(self, bucket, key, path):
+            raise RuntimeError("AccessDenied")
+
+    monkeypatch.setattr(notify, "_s3", BrokenS3())
+    assert notify.contents_of("hive-in-the-cloud", "asx.db") == {}
+
+    body = notify.render_text(details(contents={}))
+    assert "asx.db is ready to use" in body
+    assert "Tables" not in body
+
+
+# ------------------------------------------------------------------ mail
+
+
+def test_the_lead_sentence_names_the_universe(published_db):
+    d = details(contents=notify.inspect_database(str(published_db)))
+    assert notify.lead_for(d) == (
+        "Stock price history has been downloaded for ASX ETF tickers and "
+        "analysis is done. Database s3://hive-in-the-cloud/asx.db is ready to use."
+    )
+
+
+def test_the_lead_sentence_drops_the_universe_when_it_is_unknown():
+    assert notify.lead_for(details(contents={})) == (
+        "Stock price history has been downloaded and analysis is done. "
+        "Database s3://hive-in-the-cloud/asx.db is ready to use."
+    )
+
+
+def test_both_bodies_list_the_tables_with_counts(published_db):
+    d = details(contents=notify.inspect_database(str(published_db)))
+
+    text = notify.render_text(d)
+    assert "ASX_1_YEAR_HISTORY" in text
+    assert "02 Sep 2025 to 25 Aug 2026" in text
+
+    body = notify.render_html(d)
+    assert "ASX_1_YEAR_HISTORY" in body
+    assert "02 Sep 2025" in body and "25 Aug 2026" in body
+
+
 def test_a_missing_timestamp_still_produces_a_mail():
     """No $.time is a malformed event, not a reason to send nothing."""
     broken = event()
     del broken["time"]
-    assert "is live" in notify.subject_for(notify.details_for(broken, MELBOURNE))
+    assert "is ready to use" in notify.subject_for(notify.details_for(broken, MELBOURNE))
 
 
 # ---------------------------------------------------------------- sending
 
 
-def test_handler_sends_both_bodies_from_the_configured_address(monkeypatch):
+def test_handler_sends_both_bodies_from_the_configured_address(monkeypatch, published_db):
     sent = {}
 
     class FakeSES:
         def send_email(self, **kwargs):
             sent.update(kwargs)
 
+    class FakeS3:
+        def download_file(self, bucket, key, path):
+            shutil.copy(published_db, path)
+
     monkeypatch.setattr(notify, "_ses", FakeSES())
+    monkeypatch.setattr(notify, "_s3", FakeS3())
     monkeypatch.setattr(notify, "TIMEZONE", "Australia/Melbourne")
     monkeypatch.setitem(os.environ, "FROM_ADDRESS", "Stocks <stocks@example.com>")
     monkeypatch.setitem(os.environ, "TO_ADDRESS", "someone@example.com")
@@ -176,8 +299,12 @@ def test_handler_sends_both_bodies_from_the_configured_address(monkeypatch):
     assert sent["Destination"] == {"ToAddresses": ["someone@example.com"]}
 
     simple = sent["Content"]["Simple"]
-    assert simple["Subject"]["Data"] == result["subject"] == "stocks: us.db is live (1.89 MB)"
+    assert (
+        simple["Subject"]["Data"] == result["subject"] == "stocks: us.db is ready to use (1.89 MB)"
+    )
     # Both parts, always: a mail with no text alternative scores worse with
     # spam filters and is unreadable in a client that refuses HTML.
     assert "07:34 AEST" in simple["Body"]["Text"]["Data"]
     assert "07:34 AEST" in simple["Body"]["Html"]["Data"]
+    # The database was opened, not just the event read.
+    assert "ASX_1_YEAR_HISTORY" in simple["Body"]["Html"]["Data"]
