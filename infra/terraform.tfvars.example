@@ -6,11 +6,18 @@
 # Existing bucket the databases are published to. Name only, no s3:// scheme.
 data_bucket = "your-bucket"
 
-# Subscribed to the alert topic (a run broke, or none happened in 24 h) and,
-# unless notify_email overrides it, to the notification topic as well (us.db /
-# asx.db reached S3). AWS emails one confirmation link per subscription on
-# first apply; until you click both, nothing is delivered.
+# Subscribed to the alert topic: a run broke, or none happened in 24 h. AWS
+# emails a confirmation link on first apply; until you click it, no alert is
+# delivered. Unless notify_email overrides it, this also receives the ~2/day
+# "database published" mail.
 alert_email = "you@example.com"
+
+# Domain the "database published" mail is sent from, as Stocks <stocks@...>.
+# It needs a public Route 53 hosted zone in this account -- terraform writes
+# the three DKIM CNAMEs into it, and SES verifies the domain a few minutes
+# after they resolve. Sending from a domain you do not control (a gmail.com
+# From, say) fails DMARC alignment and lands in spam.
+notify_domain = "example.com"
 
 # Optional overrides -- defaults are in variables.tf.
 # Set only to send the ~2/day "database published" mail somewhere other than

@@ -53,6 +53,11 @@ locals {
   # null and is resolved here.
   notify_email = coalesce(var.notify_email, var.alert_email)
 
+  # Who the mail comes from. A display name as well as an address, because
+  # "Stocks" is what an inbox list shows; the address is what SES checks
+  # against the verified domain identity.
+  notify_from = "Stocks <stocks@${var.notify_domain}>"
+
   # Melbourne observes daylight saving. An IANA zone tracks the transitions;
   # a UTC cron would drift an hour twice a year. Note this pins the schedule to
   # Melbourne local time only -- it does not keep the gap to the New York

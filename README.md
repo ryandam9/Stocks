@@ -508,12 +508,12 @@ detect.
 ### Knowing when it worked
 
 Silence from the alarms above is evidence that no detector fired — not evidence
-that a database exists. So success has its own path, on its own topic:
+that a database exists. So success has its own path, and its own delivery:
 
-| Topic | Sends | Volume |
+| Path | Sends | Volume |
 |---|---|---|
-| `stocks-alerts` | the three failures above | ~0/day |
-| `stocks-notifications` | `us.db` / `asx.db` reached S3 | ~2/day |
+| SNS `stocks-alerts` | the three failures above | ~0/day |
+| SES, via the `stocks-notify` lambda | `us.db` / `asx.db` reached S3 | ~2/day |
 
 The success mail is triggered by the **S3 object**, not by the ECS task exiting
 0. A task can exit 0 having published nothing — that is the `upload-skipped`
@@ -521,29 +521,52 @@ row above — so a "task completed" email would read as success on exactly the
 night there is no new data. It carries the object's size, the cheapest check
 that the run produced a real database rather than a short one.
 
-```
-stocks: asx.db published to s3://<bucket>/asx.db at 18:39 AEST on Tue 25 Aug 2026
-(2015232 bytes). The task completed and the database is live.
-```
+**What it says.** The mail opens the database it is announcing and reports
+what is in it: the tables with their row counts, the span of price history, and
+the size. The event on its own says a file of some size arrived, which is
+enough to know a run finished and not enough to know what it produced — the
+figures you would otherwise open a SQL client to check. The universe is named
+from the database's own `run_metadata` rather than guessed from the filename,
+so the sentence says what was actually screened.
 
-The time is Melbourne local, the same zone the schedules run on, and it names
-the offset in force that night — `AEST` or `AEDT`. EventBridge can only quote
-its own UTC `$.time` and cannot convert it, so a small lambda (`stocks-notify`)
-does the conversion and publishes the message. That lambda erroring is itself
-a way for a successful run to go unreported, so `stocks-notify-failed` alarms
-on it to the *alert* topic.
+That means the lambda reads the object (`s3:GetObject`, scoped to the two
+database keys) into `/tmp` and queries it read-only. If any of that fails —
+a permission, a slow download, a file that is not SQLite — it logs and sends
+the shorter mail anyway. The notification's job is to say a database landed,
+and it can still say that without the table list.
 
-Both topics subscribe `alert_email` unless `notify_email` is set, and **each
-needs its own confirmation click**; AWS sends one email per subscription.
+**Why SES and not a second SNS topic.** An SNS email subscription sends plain
+text only: the body arrives as a quoted string under the subject "AWS
+Notification Message", with an unsubscribe footer stapled on. SES takes an HTML
+body and a subject of our choosing, so the mail leads with `asx.db is live`,
+states the time in Melbourne local — `AEST` or `AEDT`, whichever was in force —
+and lays the size and object out to be skimmed. A plain-text alternative goes
+in the same message for clients that refuse HTML.
+
+Alerts stay on SNS on purpose. They are rare, they must arrive even if the
+prettier path is what broke, and CloudWatch alarms publish to a topic without
+anything in between.
+
+**Sending domain.** `notify_domain` must have a public Route 53 hosted zone in
+the account; terraform verifies the domain with Easy DKIM and writes the three
+CNAMEs into that zone itself. Sending from a domain you do not control — a
+`gmail.com` From on mail signed by `amazonses.com` — fails DMARC alignment and
+lands in spam, which is why the domain is required rather than defaulted.
+
+Two identities must verify before anything is delivered: the domain, a few
+minutes after the DKIM records resolve, and the recipient, when you click the
+link AWS emails. The recipient is only needed while the account is in the SES
+sandbox, but a new account is, and an unverified recipient there fails the send
+rather than queueing it.
 
 ```bash
-aws sns list-subscriptions --region ap-southeast-2 \
-  --query 'Subscriptions[?starts_with(TopicArn,`arn:aws:sns:ap-southeast-2`)].[TopicArn,Endpoint,SubscriptionArn]' \
-  --output text | grep stocks
+aws sesv2 get-email-identity --region ap-southeast-2 \
+  --email-identity <notify_domain> --query VerifiedForSendingStatus
 ```
 
-A `SubscriptionArn` of `PendingConfirmation` means the link was never clicked
-and nothing will be delivered.
+While either is unverified the lambda errors on every publish, which raises
+`stocks-notify-failed` to the alert topic — the same detector that covers the
+notifier failing for any other reason.
 
 ### Rolling back
 
