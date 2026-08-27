@@ -156,7 +156,11 @@ aws sesv2 get-email-identity --region ap-southeast-2 \
 ```
 
 While either is unverified every publish errors, and `stocks-notify-failed`
-alarms to the alert topic.
+alarms to the alert topic. In the sandbox the notifier's role needs
+`ses:SendEmail` on *both* identities, because SES authorises the send against
+each verified destination as well as the From address; scoped to the domain
+alone the call is denied on the recipient's ARN, which looks like an
+unverified address and is not.
 
 ## What is deliberately absent
 

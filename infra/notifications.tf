@@ -155,12 +155,20 @@ resource "aws_iam_role" "notify" {
 # the retention below is the only setting the group will ever have.
 data "aws_iam_policy_document" "notify" {
   statement {
-    sid     = "SendFromTheVerifiedDomain"
+    sid     = "SendToAndFromTheVerifiedIdentities"
     actions = ["ses:SendEmail"]
-    # The identity being sent *from*, not the recipient. Scoped to this one
-    # domain, so the role cannot send as anything else the account verifies
-    # later.
-    resources = [aws_sesv2_email_identity.sender.arn]
+    # Both identities, not just the sender. Outside the sandbox SES authorises
+    # SendEmail against the From identity alone, and the domain on its own
+    # would be enough; inside it every destination is a verified identity too,
+    # and the call is authorised against those as well. Granting only the
+    # domain gets an AccessDeniedException naming the *recipient*, which reads
+    # like an unverified address and is not -- it is this policy being too
+    # narrow. Both are still named explicitly, so the role cannot send as, or
+    # to, anything else the account verifies later.
+    resources = [
+      aws_sesv2_email_identity.sender.arn,
+      aws_sesv2_email_identity.recipient.arn,
+    ]
   }
 
   statement {
