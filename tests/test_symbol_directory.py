@@ -64,40 +64,69 @@ def test_blank_codes_and_duplicates_are_dropped():
 
 # ------------------------------- ASX investment products report
 
-# Every line here is a trap the real report actually contains, in the shape
-# pypdf extracts it: a title with no figures, a section heading, a two-line
-# column header, codes carrying digits, a six-character code, a fund whose
-# name contains numbers, and a long name wrapped onto the next line.
-REPORT = """ASX Investment Products
-August 2026
-Exchange Traded Funds
-Code Fund Name Market Cap
-($m) Turnover MER
-ASAO abrdn Sustainable Asian Opportunities Active ETF 100.0 10.0 0.00%
-A200 Betashares Australia 200 ETF 2,145.6 89.2 0.07%
-1GOV VanEck 1-5 Year Australian Govt Bd ETF 312.4 12.1 0.22%
-ETPMAG Global X Physical Silver Structured 118.9 9.4 0.49%
-USD BetaShares US Dollar ETF 512.3 44.1 0.45%
-BBFD Betashares Geared Short US Treasury Bond Currency Hedged Complex
-ETF 168.0 78.0 0.68%
-Total 452 products
+# Real lines from the July 2026 report, in the shape pypdf extracts them:
+# code, the security's form, its name, then the columns. The caret is a
+# footnote marker. Every kind of row the document contains is here.
+REPORT = """Investment Product Summary - July 2026
+ASX Fund Segment Market Capitalisation Number Listed
+A200 ETF Betashares Australia 200 ETF 0.04 10,544.59  444.12         279.02
+^ DHHF ETF Betashares Diversified All Growth ETF 0.19 1,504.57    49.48
+URNM ETF Betashares Global Uranium ETF 0.69 311.31       (17.38)          9.90
+IMPQ Active Perennial Better Future Active ETF 0.99 24.22         (1.80)
+ALFA Complex VanEck Australian Long Short Complex ETF 0.39 36.24         2.67
+ETPMPM SP Global X Physical Precious Metals Basket 0.44 128.27       5.08
+1GOV ETF VanEck 1-5 Year Australian Govt Bd ETF 0.22 312.40       12.10
+USD ETF BetaShares US Dollar ETF 0.45 512.30       44.10
+AFI Shares Australian Foundation Investment Company Limited 0.16 No 8,421.43
+APA Stapled APA Group 13,489.03       (198.56)       706,136,489
+OPH Units Ophir High Conviction Fund 1.23 Yes 565.3 (11.23)
+XJOAI Index S&P/ASX 200 Accumulation n/a n/a n/a n/a 123,257.00
+TOTAL 591
 """
 
 
-def test_the_report_reads_every_kind_of_row():
+def test_the_report_returns_funds_and_structured_products():
     frame = parse_asx_report_text(REPORT).set_index("ticker")
 
-    assert list(frame.index) == ["ASAO", "A200", "1GOV", "ETPMAG", "USD", "BBFD"]
+    assert list(frame.index) == ["A200", "DHHF", "URNM", "IMPQ", "ALFA", "ETPMPM", "1GOV", "USD"]
     assert set(frame["exchange"]) == {"ASX"}
 
 
+def test_companies_reits_and_trusts_are_not_funds():
+    """The report covers the whole ASX product suite, not just funds.
+
+    Taking every row put Argo, Atlas Arteria, Arena REIT and APA Group into an
+    ETF universe -- APA being the ticker removed from it by hand a week
+    earlier. The form beside the code is what separates them.
+    """
+    tickers = set(parse_asx_report_text(REPORT)["ticker"])
+
+    assert "AFI" not in tickers  # Shares -- a listed investment company
+    assert "APA" not in tickers  # Stapled -- an infrastructure group
+    assert "OPH" not in tickers  # Units -- a listed trust
+    assert "XJOAI" not in tickers  # Index -- a benchmark, not a product
+
+
+def test_the_form_column_is_not_part_of_the_name():
+    frame = parse_asx_report_text(REPORT).set_index("ticker")
+
+    assert frame.loc["IMPQ", "name"] == "Perennial Better Future Active ETF"
+    assert frame.loc["ALFA", "name"] == "VanEck Australian Long Short Complex ETF"
+    assert frame.loc["ETPMPM", "name"] == "Global X Physical Precious Metals Basket"
+
+
+def test_a_footnote_marker_is_not_part_of_the_code():
+    """Some rows carry a leading caret."""
+    assert "DHHF" in set(parse_asx_report_text(REPORT)["ticker"])
+
+
 def test_a_code_may_carry_digits_and_run_to_six_characters():
-    """A200, 1GOV and ETPMAG are all real. Letters-only-and-four lost 32 funds."""
+    """A200, 1GOV and ETPMPM are all real. Letters-only-and-four lost 32 funds."""
     frame = parse_asx_report_text(REPORT).set_index("ticker")
 
     assert frame.loc["A200", "name"] == "Betashares Australia 200 ETF"
     assert frame.loc["1GOV", "name"] == "VanEck 1-5 Year Australian Govt Bd ETF"
-    assert frame.loc["ETPMAG", "name"] == "Global X Physical Silver Structured"
+    assert "ETPMPM" in frame.index
 
 
 def test_a_number_inside_a_fund_name_is_not_the_start_of_the_figures():
@@ -109,36 +138,32 @@ def test_a_number_inside_a_fund_name_is_not_the_start_of_the_figures():
     assert "1-5 Year" in frame.loc["1GOV", "name"]
 
 
-def test_a_wrapped_row_keeps_its_whole_name():
-    """The name overflows the column and the figures land on the next line."""
-    frame = parse_asx_report_text(REPORT).set_index("ticker")
-
-    assert frame.loc["BBFD", "name"] == (
-        "Betashares Geared Short US Treasury Bond Currency Hedged Complex ETF"
+def test_a_word_that_is_also_a_ticker_is_still_a_fund():
+    """USD looks like a column label and is BetaShares' US Dollar ETF."""
+    assert parse_asx_report_text(REPORT).set_index("ticker").loc["USD", "name"] == (
+        "BetaShares US Dollar ETF"
     )
-
-
-def test_the_row_under_a_column_header_is_not_swallowed():
-    """ "($m) Turnover MER" carries no figures either, so a naive join ate the
-    first fund beneath it."""
-    assert "ASAO" in set(parse_asx_report_text(REPORT)["ticker"])
 
 
 def test_titles_headings_and_totals_are_not_products():
     tickers = set(parse_asx_report_text(REPORT)["ticker"])
 
-    assert "ASX" not in tickers  # the document's own title
-    assert "Total" not in tickers and "TOTAL" not in tickers
+    assert "ASX" not in tickers
+    assert not {"TOTAL", "Total"} & tickers
 
 
-def test_a_word_that_is_also_a_ticker_is_still_a_fund():
-    """USD looks like a column label and is BetaShares' US Dollar ETF."""
-    frame = parse_asx_report_text(REPORT).set_index("ticker")
-
-    assert frame.loc["USD", "name"] == "BetaShares US Dollar ETF"
+def test_a_wrapped_row_keeps_its_whole_name():
+    """A long name can overflow, taking the figures onto the next line."""
+    wrapped = (
+        "BBFD Complex Betashares Geared Short US Treasury Bond Currency Hedged\n"
+        "Complex ETF 0.68 168.0 78.0\n"
+    )
+    assert parse_asx_report_text(wrapped).iloc[0]["name"] == (
+        "Betashares Geared Short US Treasury Bond Currency Hedged Complex ETF"
+    )
 
 
 def test_a_file_with_no_product_rows_is_an_error():
     """A cover page or a failed text extraction must not read as an empty ASX."""
     with pytest.raises(ValueError, match="no product rows"):
-        parse_asx_report_text("ASX Investment Products\nAugust 2026\n")
+        parse_asx_report_text("Investment Product Summary - July 2026\nTOTAL 591\n")

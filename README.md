@@ -692,7 +692,7 @@ shell wrappers do not expose:
 uv run src/fetch_prices.py  --exchange US --instrument-type stocks \
     --period 400 --batch-size 100 --min-success-ratio 0.95 --log-file logs/us.log
 uv run src/analysis.py      --exchange US --instrument-type stocks [--allow-stale]
-scripts/refresh_universe.py --exchange US --instrument-type stocks [--dry-run]
+uv run scripts/refresh_universe.py --exchange US --instrument-type stocks [--dry-run]
 uv run src/config.py        US stocks db_path       # resolve any config value
 ```
 
@@ -1017,8 +1017,8 @@ writes it. Membership changes on a developer machine, against the exchange's
 own listings, and lands as a reviewable diff:
 
 ```bash
-scripts/refresh_universe.py --exchange US  --instrument-type stocks --dry-run
-scripts/refresh_universe.py --exchange ASX --instrument-type etf
+uv run scripts/refresh_universe.py --exchange US  --instrument-type stocks --dry-run
+uv run scripts/refresh_universe.py --exchange ASX --instrument-type etf
 git diff config/                # review
 git commit && ./scripts/build_image.sh --push
 ```
@@ -1029,17 +1029,33 @@ kinds of thing:
 | | Source | Membership | Classification |
 |---|---|---|---|
 | US | `nasdaqlisted.txt` + `otherlisted.txt` | whatever the files say | the files carry an ETF flag |
-| ASX | **investment products report** (monthly PDF) | the report's own rows | every row *is* an ETP — that is what the report is |
+| ASX | **investment products report** (monthly PDF) | the report's own rows | the form column beside each code — `ETF`, `Active`, `Complex`, `SP` |
 | ASX | company directory CSV (fallback) | whatever the directory lists | none — each *new* code gets one provider lookup |
 
 **Prefer the report for the ASX.** The [ASX Investment Products monthly
 report](https://www.asx.com.au/issuers/investment-products/asx-investment-products-monthly-report)
-lists exchange-traded products and nothing else, so membership and
+names the *form* of each security beside its code, so membership and
 classification arrive together and no provider lookup is needed. The company
 directory can only say which codes exist, never which of them are funds.
 
+It is not a list of funds, though — it covers the whole ASX product suite,
+about 600 securities. Only four forms are taken:
+
+| Form | What it is | Taken |
+|---|---|---|
+| `ETF`, `Active`, `Complex` | exchange-traded funds | ✅ |
+| `SP` | structured products (`GOLD`, the physical metals) | ✅ |
+| `Shares` | listed investment companies (Argo, AFI) | — |
+| `Stapled` | REITs and infrastructure groups (APA, Atlas Arteria) | — |
+| `Units` | listed trusts | — |
+| `Index` | a benchmark, not a product | — |
+
+Taking every row instead put 143 companies and trusts into the ETF universe on
+its first real run — `APA` among them, the ticker removed from that file by
+hand a week earlier.
+
 ```bash
-scripts/refresh_universe.py --exchange ASX --instrument-type etf \
+uv run scripts/refresh_universe.py --exchange ASX --instrument-type etf \
     --from-file ~/Downloads/asx-investment-products-aug-2026.pdf --dry-run
 ```
 

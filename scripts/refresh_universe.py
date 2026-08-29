@@ -19,15 +19,15 @@ which are funds. So an ASX refresh drops what the directory no longer lists
 and asks the price provider about each *new* code before letting it into a
 fund universe. That lookup happens here, once, rather than on every run.
 
-    scripts/refresh_universe.py --exchange US  --instrument-type stocks
-    scripts/refresh_universe.py --exchange ASX --instrument-type etf --dry-run
+    uv run scripts/refresh_universe.py --exchange US  --instrument-type stocks
+    uv run scripts/refresh_universe.py --exchange ASX --instrument-type etf --dry-run
 
 If the exchange blocks the download -- the ASX does, intermittently -- save
 the file by hand and pass --from-file. That also accepts the ASX Investment
 Products report, the monthly PDF listing exchange-traded products and nothing
 else:
 
-    scripts/refresh_universe.py --exchange ASX --instrument-type etf \
+    uv run scripts/refresh_universe.py --exchange ASX --instrument-type etf \
         --from-file asx-investment-products-aug-2026.pdf --dry-run
 
 which is the better ASX source when you can get it: the company directory
@@ -38,8 +38,15 @@ import datetime
 import os
 import sys
 
-import click
-import pandas as pd
+try:
+    import click
+    import pandas as pd
+except ImportError as exc:  # pragma: no cover - depends on how it was invoked
+    raise SystemExit(
+        f"{exc.name} is missing: this reads the project's own modules, so it "
+        f"needs the project environment.\n"
+        f"    uv run scripts/refresh_universe.py --exchange US --instrument-type stocks"
+    ) from exc
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
 
@@ -137,11 +144,14 @@ def main(exchange, instrument_type, from_file, trust_file, dry_run, force):
     print(f"{path}: {len(existing)} tickers")
 
     if is_asx_report(from_file):
-        # Every row in that report is an exchange-traded product, which is the
-        # whole reason to prefer it over the company directory. Confirming
-        # that with a provider lookup would only add a way to fail.
+        # The report covers the whole ASX product suite -- listed investment
+        # companies, A-REITs and infrastructure funds share its tables with
+        # the funds -- but it names the form of each security in the column
+        # beside its code, and the parser keeps only the fund forms. So the
+        # document has already classified every row it returns, and asking
+        # the provider to confirm it would only add a way to fail.
         trust_file = True
-        print("reading the ASX Investment Products report (every row is an ETP)")
+        print("reading the ASX Investment Products report (funds and ETPs only)")
 
     directory = fetch_directory(exchange, from_file)
     print(f"exchange directory: {len(directory)} listings")
@@ -176,10 +186,12 @@ def main(exchange, instrument_type, from_file, trust_file, dry_run, force):
         # already asserts would only add a way for the run to fail.
         added, skipped, unresolved = candidates, 0, []
     elif exchange in US_EXCHANGES:
-        # The directory classifies them itself.
-        keep = set(directory[directory["asset_type"] == default_type]["ticker"]) & set(candidates)
-        added = sorted(keep)
-        skipped, unresolved = len(candidates) - len(added), []
+        # Everything the directory lists, whatever its type. A US universe
+        # file mirrors the exchange -- 13,135 rows across eight asset types --
+        # and the config's asset_types decides what is screened out of it at
+        # read time. Adding only the configured type dropped 46 new listings
+        # in a single week and would quietly stop the file being a mirror.
+        added, skipped, unresolved = candidates, 0, []
     elif candidates:
         print(f"asking the provider about {len(candidates)} new ASX code(s)...")
         kinds = classify_new_asx(candidates)
@@ -192,9 +204,13 @@ def main(exchange, instrument_type, from_file, trust_file, dry_run, force):
 
     names_preview = directory.set_index("ticker")["name"]
     print(f"\n  removed  {len(removed):>5}   no longer listed")
-    print(f"  added    {len(added):>5}   new listings of this type")
-    print(f"  skipped  {skipped:>5}   new listings of another type")
+    print(f"  added    {len(added):>5}   newly listed")
+    if skipped:
+        print(f"  skipped  {skipped:>5}   new listings of another type")
     print(f"  kept     {len(held & active):>5}")
+    if added and "asset_type" in directory.columns:
+        kinds = directory.set_index("ticker")["asset_type"].reindex(added).value_counts()
+        print("           " + ", ".join(f"{n} {kind}" for kind, n in kinds.items()))
     for ticker in removed[:20]:
         name = existing.loc[existing["ticker"] == ticker, "name"].iloc[0]
         print(f"    - {ticker:<8} {name[:56]}")
