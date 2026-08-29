@@ -672,12 +672,11 @@ screening the wrong thing.
 
 Two differences from the US universe are worth knowing:
 
-- **The ASX has no bulk symbol directory** in the sense the US does. Its
-  company directory gives membership but not classification — it lists every
-  quoted code, ETPs included, without saying which are funds. So
-  `refresh_universe.py` drops what the directory no longer lists and asks the
-  price provider about each *new* code before letting it into a fund universe.
-  See [Changing the universe](#changing-the-universe).
+- **The ASX has no bulk symbol directory** in the sense the US does. Feed
+  `refresh_universe.py` the monthly investment products report and every row
+  in it is an ETP by definition; feed it the company directory instead and it
+  can only say which codes exist, so each *new* code costs one provider
+  lookup. See [Changing the universe](#changing-the-universe).
 - **Thresholds are tuned per market.** ASX ETFs turn over roughly 8k shares a
   day against ~188k for US equities, and market-maker creation/redemption means
   screen volume understates their real liquidity. `config/asx_etf_config.yaml`
@@ -1030,7 +1029,26 @@ kinds of thing:
 | | Source | Membership | Classification |
 |---|---|---|---|
 | US | `nasdaqlisted.txt` + `otherlisted.txt` | whatever the files say | the files carry an ETF flag |
-| ASX | company directory CSV | whatever the directory lists | the directory has none — each *new* code gets one provider lookup |
+| ASX | **investment products report** (monthly PDF) | the report's own rows | every row *is* an ETP — that is what the report is |
+| ASX | company directory CSV (fallback) | whatever the directory lists | none — each *new* code gets one provider lookup |
+
+**Prefer the report for the ASX.** The [ASX Investment Products monthly
+report](https://www.asx.com.au/issuers/investment-products/asx-investment-products-monthly-report)
+lists exchange-traded products and nothing else, so membership and
+classification arrive together and no provider lookup is needed. The company
+directory can only say which codes exist, never which of them are funds.
+
+```bash
+scripts/refresh_universe.py --exchange ASX --instrument-type etf \
+    --from-file ~/Downloads/asx-investment-products-aug-2026.pdf --dry-run
+```
+
+It is a PDF, so this needs `pypdf` — installed on your machine only, never in
+the image, because the pipeline has no business carrying a PDF parser:
+
+```bash
+uv pip install pypdf
+```
 
 Three things the script will not do:
 
