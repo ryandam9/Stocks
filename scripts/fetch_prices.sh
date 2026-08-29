@@ -28,7 +28,7 @@ PERIOD="${3:-400}"
 
 if ! [[ "$PERIOD" =~ ^[1-9][0-9]*$ ]]; then
     echo "Error: PERIOD_DAYS must be a positive integer, got '$PERIOD'" >&2
-    exit 1
+    exit 1 
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
