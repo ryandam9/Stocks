@@ -915,8 +915,8 @@ wipe them.
 
 | | ASX | US |
 |---|---|---|
-| `issuer` filled | 100% | 97% |
-| `category` filled | 74% | 64% |
+| `issuer` filled | 99.8% | 99.8% |
+| `category` filled | 74% of funds | 62% of funds |
 
 **Blanks are deliberate.** `issuer` is empty when a title opens with a
 description rather than a name (`Australian Major Bank Subordinated Debt ETF`),
@@ -927,9 +927,21 @@ B Managed Fund` says nothing that can honestly be classified, and filling it
 with `equity` on the assumption would make the column look complete while being
 unverified on a quarter of the universe.
 
-Neither applies to a common stock. A company is not issued by a manager, and
-`ATA Creativity Global` would otherwise be attributed to an issuer called
-"ATA"; a stock's category is its sector, which its name does not carry.
+**A company is its own issuer** — it issues its own shares — so `issuer` holds
+the company name there, with the security description stripped off:
+
+```
+AACI   ATA Creativity Global - American Depositary Shares  ->  ATA Creativity Global
+A      Agilent Technologies, Inc. Common Stock             ->  Agilent Technologies, Inc.
+```
+
+That is not the same as inferring a fund manager, which would credit
+`ATA Creativity Global` to a manager called "ATA". It also means a SPAC's three
+lines — ordinary share, unit and warrant — report one issuer and group as one
+company instead of three.
+
+`category` stays fund-only: a stock's category is its sector, and its name does
+not carry one.
 
 The categories are asset-class first: `crypto`, `precious metals`, `industrial
 metals`, `energy`, `agriculture`, `property`, `infrastructure`, `fixed income`,

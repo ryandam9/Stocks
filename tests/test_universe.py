@@ -6,6 +6,7 @@ from universe import (
     COMMON_STOCK,
     ETF,
     EXCHANGE_UNKNOWN,
+    company_name,
     filter_universe,
     infer_asset_type,
     infer_category,
@@ -214,19 +215,56 @@ def test_the_issuers_own_name_is_not_evidence_about_the_assets():
     assert infer_category("Platinum International ETF") == ""
 
 
-def test_a_company_has_no_issuer_and_no_category(tmp_path):
-    """Only funds carry either. "ATA Creativity Global" is not run by "ATA"."""
+def test_a_company_is_its_own_issuer_and_has_no_category(tmp_path):
+    """A company issues its own shares, so the issuer is the company.
+
+    Not a fragment of one: inferring a fund manager from a company name gives
+    "ATA" for "ATA Creativity Global". Category stays empty because a stock's
+    category is its sector, which its name does not carry.
+    """
     path = tmp_path / "u.csv"
     path.write_text(
         "ticker,name,exchange,asset_type\n"
-        "AACG,ATA Creativity Global,NASDAQ,common_stock\n"
+        "AACG,ATA Creativity Global - American Depositary Shares,NASDAQ,common_stock\n"
         "QAU,Betashares Gold Bullion ETF,ASX,etf\n"
     )
     df = load_universe(str(path)).set_index("ticker")
-    assert df.loc["AACG", "issuer"] == ""
+    assert df.loc["AACG", "issuer"] == "ATA Creativity Global"
     assert df.loc["AACG", "category"] == ""
     assert df.loc["QAU", "issuer"] == "Betashares"
     assert df.loc["QAU", "category"] == "precious metals"
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        # The directory's two shapes: a " - " separator, and a trailing phrase.
+        (
+            "ATA Creativity Global - American Depositary Shares, each representing two",
+            "ATA Creativity Global",
+        ),
+        ("Agilent Technologies, Inc. Common Stock", "Agilent Technologies, Inc."),
+        ("Alcoa Corporation Common Stock", "Alcoa Corporation"),
+        (
+            "Ares Acquisition Corporation III Units, each consisting of one Class A",
+            "Ares Acquisition Corporation III",
+        ),
+    ],
+)
+def test_company_name_strips_the_security_description(name, expected):
+    assert company_name(name) == expected
+
+
+def test_a_spacs_three_lines_report_one_issuer(tmp_path):
+    """Share, unit and warrant are one company, and should group as one."""
+    path = tmp_path / "u.csv"
+    path.write_text(
+        "ticker,name,exchange,asset_type\n"
+        "AACI,Armada Acquisition Corp. III - Class A Ordinary Share,NASDAQ,common_stock\n"
+        "AACIU,Armada Acquisition Corp. III - Units,NASDAQ,unit\n"
+        "AACIW,Armada Acquisition Corp. III - Warrant,NASDAQ,warrant\n"
+    )
+    assert set(load_universe(str(path))["issuer"]) == {"Armada Acquisition Corp. III"}
 
 
 def test_a_value_in_the_file_wins_over_the_inference(tmp_path):

@@ -153,6 +153,9 @@ _ISSUER_ALIASES = [
     ("stt strt", "SPDR"),
     ("state street", "SPDR"),
     ("spdr", "SPDR"),
+    # A real ETP provider whose name opens with a word the stop-list below
+    # treats as a description; the alias has to win before that.
+    ("leverage shares", "Leverage Shares"),
     ("first trust", "First Trust"),
     ("first sentier", "First Sentier"),
     ("intelligent investor", "Intelligent Investor"),
@@ -243,6 +246,33 @@ _GENERIC_FIRST_WORDS = {
 # company name masquerading as a fund manager. Category is gated the same way:
 # a stock's category is its sector, which its name does not carry.
 FUND_ASSET_TYPES = frozenset({"etf", "note"})
+
+
+# How the exchange directory tacks a security description onto a company name,
+# in the two shapes it uses: "Company - Class A Ordinary Shares" and "Company
+# Common Stock". Both have to come off, or the issuer of every SPAC's three
+# lines reads as three different companies.
+_SECURITY_SUFFIX = re.compile(
+    r"\s+(?:"
+    r"class\s+[a-z]\b.*|common\s+stock.*|ordinary\s+share.*|units?\b.*|"
+    r"warrants?\b.*|rights?\b.*|preferred\s+stock.*|depositary\s+share.*|"
+    r"american\s+depositary.*|subordinat.*|notes?\s+due.*|\d+(?:\.\d+)?%\s.*"
+    r")$",
+    re.IGNORECASE,
+)
+
+
+def company_name(name: str) -> str:
+    """The company out of a security's directory title.
+
+    A company issues its own shares, so it is its own issuer -- but the
+    directory names the *security*, not the company: "ATA Creativity Global -
+    American Depositary Shares, each representing two common shares". The
+    description comes off so that a company's ordinary shares, its units and
+    its warrants all report the same issuer instead of three.
+    """
+    text = str(name).split(" - ")[0].strip()
+    return _SECURITY_SUFFIX.sub("", text).strip(" ,") or text
 
 
 def _strip_issuer(name: str) -> str:
@@ -442,9 +472,20 @@ def load_universe(path: str, default_asset_type: str = COMMON_STOCK) -> pd.DataF
     # or category in the universe file always wins over the inference, and
     # only for the asset types that have either.
     is_fund = df["asset_type"].astype(str).str.lower().isin(FUND_ASSET_TYPES)
-    for column, infer in (("issuer", infer_issuer), ("category", infer_category)):
-        blank = is_fund & (df[column].astype(str).str.strip() == "")
-        df.loc[blank, column] = df.loc[blank, "name"].apply(infer)
+
+    blank_issuer = df["issuer"].astype(str).str.strip() == ""
+    df.loc[blank_issuer & is_fund, "issuer"] = df.loc[blank_issuer & is_fund, "name"].apply(
+        infer_issuer
+    )
+    # A company issues its own shares, so the issuer is the company itself.
+    df.loc[blank_issuer & ~is_fund, "issuer"] = df.loc[blank_issuer & ~is_fund, "name"].apply(
+        company_name
+    )
+
+    # Category stays fund-only: a company's category is its sector, and its
+    # name does not carry one.
+    blank_category = is_fund & (df["category"].astype(str).str.strip() == "")
+    df.loc[blank_category, "category"] = df.loc[blank_category, "name"].apply(infer_category)
 
     return df[UNIVERSE_COLUMNS]
 
@@ -528,9 +569,17 @@ def sync_universe(
         )
         incoming[column] = carried
         blank = incoming[column].isna() | (incoming[column].astype(str).str.strip() == "")
-        blank &= incoming["asset_type"].astype(str).str.lower().isin(FUND_ASSET_TYPES)
-        infer = infer_issuer if column == "issuer" else infer_category
-        incoming.loc[blank, column] = incoming.loc[blank, "name"].apply(infer)
+        is_fund = incoming["asset_type"].astype(str).str.lower().isin(FUND_ASSET_TYPES)
+        if column == "category":
+            blank &= is_fund
+            incoming.loc[blank, column] = incoming.loc[blank, "name"].apply(infer_category)
+        else:
+            incoming.loc[blank & is_fund, column] = incoming.loc[blank & is_fund, "name"].apply(
+                infer_issuer
+            )
+            incoming.loc[blank & ~is_fund, column] = incoming.loc[blank & ~is_fund, "name"].apply(
+                company_name
+            )
         incoming[column] = incoming[column].fillna("")
 
     write_universe(incoming[UNIVERSE_COLUMNS], path)
