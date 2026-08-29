@@ -66,5 +66,12 @@ config:
       - {months: 1, label: 1_month, threshold: 10.0}
       # A 7-day window holds only ~5-6 sessions, too few for the 3-day
       # endpoint median used elsewhere: one short trading week would exclude
-      # everything. It overrides endpoint_window and min_coverage accordingly.
+      # everything, so min_coverage is halved. (endpoint_window is set for
+      # completeness and applies only under return_basis: robust -- the
+      # google_finance basis above is defined on single closes.)
+      #
+      # Left at 10% where the ASX ETF screen uses 5%: this universe is single
+      # stocks, not baskets, and one of them moving 10% in a week is ordinary
+      # rather than notable. Lowering the bar here would return hundreds of
+      # rows a week out of ~5,750 tickers.
       - {days: 7, label: 7_days, threshold: 10.0, endpoint_window: 2, min_coverage: 0.5}
