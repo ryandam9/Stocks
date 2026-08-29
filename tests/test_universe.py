@@ -8,6 +8,8 @@ from universe import (
     EXCHANGE_UNKNOWN,
     filter_universe,
     infer_asset_type,
+    infer_category,
+    infer_issuer,
     load_universe,
     normalise_exchange,
     write_universe,
@@ -150,3 +152,90 @@ def test_shipped_universes_are_structured_and_classified():
         assert len(screened) > 100
         # Derivative classes must be excluded from the screened set.
         assert not screened["asset_type"].isin(["warrant", "unit", "right"]).any()
+
+
+# ---------------------------------------------------- issuer and category
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        # The ordinary case: the issuer is the first word of the title.
+        ("Betashares Global Uranium ETF", "Betashares"),
+        ("Vanguard Australian Shares Index ETF", "Vanguard"),
+        # Capitalisation is the directory's, not ours: iShares and abrdn are
+        # spelled that way on purpose and .title() would ruin both.
+        ("iShares Core S&P/ASX 200 ETF", "iShares"),
+        ("abrdn Sustainable Asian Opportunities Active ETF", "abrdn"),
+        # Two-word brands, and the abbreviations the ASX directory uses.
+        ("Global X Physical Gold Structured", "Global X"),
+        ("Stt Strt SPDR S&P 500 ETF", "SPDR"),
+        ("Russell Inv Australian Government Bd ETF", "Russell Investments"),
+        ("Dimsnl Glbl Cor Eq Tr (UnH Cl)-Actv ETF", "Dimensional"),
+        # ETF Securities was acquired by Global X in 2022; the ASX directory
+        # still carries the old titles, and the issuer today is Global X.
+        ("ETFS Global Lithium Miners ETF", "Global X"),
+        # A title that opens with a description names no issuer, and a
+        # fragment of one would be worse than nothing.
+        ("Australian Major Bank Subordinated Debt ETF", ""),
+        ("", ""),
+    ],
+)
+def test_infer_issuer(name, expected):
+    assert infer_issuer(name) == expected
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("Betashares Bitcoin ETF", "crypto"),
+        ("Betashares Ethereum ETF", "crypto"),
+        ("Global X Physical Gold Structured", "precious metals"),
+        ("Global X Silver Miners ETF", "precious metals"),
+        ("Global X Copper Miners ETF AUD Inc", "industrial metals"),
+        ("BetaShares Global Uranium ETF", "industrial metals"),
+        ("iShares 15+ Year Australian Gov Bd ETF", "fixed income"),
+        ("Quay Global Real Estate AUD Act ETF", "property"),
+        ("Vanguard Australian Shares Index ETF", "equity"),
+        # Named for a strategy, never an asset. Blank is the honest answer;
+        # calling it equity would make the column look complete while being
+        # unverified on a third of the universe.
+        ("Aoris International B Managed Fund", ""),
+    ],
+)
+def test_infer_category(name, expected):
+    assert infer_category(name) == expected
+
+
+def test_the_issuers_own_name_is_not_evidence_about_the_assets():
+    """Platinum Asset Management runs both; neither holds an ounce of it."""
+    assert infer_issuer("Platinum Asia ETF") == "Platinum"
+    assert infer_category("Platinum Asia ETF") == ""
+    assert infer_category("Platinum International ETF") == ""
+
+
+def test_a_company_has_no_issuer_and_no_category(tmp_path):
+    """Only funds carry either. "ATA Creativity Global" is not run by "ATA"."""
+    path = tmp_path / "u.csv"
+    path.write_text(
+        "ticker,name,exchange,asset_type\n"
+        "AACG,ATA Creativity Global,NASDAQ,common_stock\n"
+        "QAU,Betashares Gold Bullion ETF,ASX,etf\n"
+    )
+    df = load_universe(str(path)).set_index("ticker")
+    assert df.loc["AACG", "issuer"] == ""
+    assert df.loc["AACG", "category"] == ""
+    assert df.loc["QAU", "issuer"] == "Betashares"
+    assert df.loc["QAU", "category"] == "precious metals"
+
+
+def test_a_value_in_the_file_wins_over_the_inference(tmp_path):
+    """So a hand correction is not overwritten every time the file is read."""
+    path = tmp_path / "u.csv"
+    path.write_text(
+        "ticker,name,exchange,asset_type,issuer,category\n"
+        "XYZ,Some Ambiguous Active ETF,ASX,etf,Ellerston,property\n"
+    )
+    row = load_universe(str(path)).iloc[0]
+    assert row["issuer"] == "Ellerston"
+    assert row["category"] == "property"

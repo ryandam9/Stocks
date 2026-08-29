@@ -895,6 +895,53 @@ AACBR  Artius II Acquisition Inc. - Rights                    right
 AACBU  Artius II Acquisition Inc. - Units                     unit
 ```
 
+### Issuer and category
+
+Funds carry two more columns, so a screen result can be grouped by who runs the
+product and what it holds:
+
+```
+ticker,name,exchange,asset_type,issuer,category,currency,source_date
+URNM,BetaShares Global Uranium ETF,ASX,etf,Betashares,industrial metals,,2026-08-28
+QBTC,Betashares Bitcoin ETF,ASX,etf,Betashares,crypto,,2026-08-28
+GOLD,Global X Physical Gold Structured,ASX,etf,Global X,precious metals,,2026-08-28
+```
+
+Both are read out of the fund's own title, because an ETF is named
+`<issuer> <what it holds> ETF` almost without exception. A value already in the
+file always wins, so a correction made by hand is never overwritten — and the
+`sync` job carries both columns across by ticker, so a universe refresh cannot
+wipe them.
+
+| | ASX | US |
+|---|---|---|
+| `issuer` filled | 100% | 97% |
+| `category` filled | 74% | 64% |
+
+**Blanks are deliberate.** `issuer` is empty when a title opens with a
+description rather than a name (`Australian Major Bank Subordinated Debt ETF`),
+because a wrong issuer is worse than a missing one — a blank is visibly absent,
+a wrong one gets filtered on. `category` is empty for the actively managed
+funds whose titles describe a strategy and never an asset: `Aoris International
+B Managed Fund` says nothing that can honestly be classified, and filling it
+with `equity` on the assumption would make the column look complete while being
+unverified on a quarter of the universe.
+
+Neither applies to a common stock. A company is not issued by a manager, and
+`ATA Creativity Global` would otherwise be attributed to an issuer called
+"ATA"; a stock's category is its sector, which its name does not carry.
+
+The categories are asset-class first: `crypto`, `precious metals`, `industrial
+metals`, `energy`, `agriculture`, `property`, `infrastructure`, `fixed income`,
+`currency`, `technology`, `healthcare`, `financials`, `resources`,
+`multi-asset`, `equity`. A miners fund is classified by its metal rather than
+by the equities it technically holds, because that is how someone screening for
+copper thinks of it.
+
+One trap worth knowing: the issuer's own name is stripped before the category
+is matched. Platinum Asset Management runs `Platinum Asia ETF` and `Platinum
+International ETF`, and neither holds an ounce of the metal.
+
 ### Instrument types
 
 Every instrument is classified into exactly one `asset_type`. `asset_types` in

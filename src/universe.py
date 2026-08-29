@@ -24,7 +24,19 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pandas as pd
 
-UNIVERSE_COLUMNS = ["ticker", "name", "exchange", "asset_type", "currency", "source_date"]
+UNIVERSE_COLUMNS = [
+    "ticker",
+    "name",
+    "exchange",
+    "asset_type",
+    # Who runs the fund, and what it holds. Both are derived from the title
+    # when blank (see infer_issuer / infer_category), so a value written here
+    # by hand is authoritative and a new listing still arrives classified.
+    "issuer",
+    "category",
+    "currency",
+    "source_date",
+]
 
 # Yahoo throttles metadata lookups; back off rather than recording the failure
 # as though the security had no exchange.
@@ -128,6 +140,230 @@ def normalise_exchange(raw: str | None) -> str:
     return key or EXCHANGE_UNKNOWN
 
 
+# Issuers whose name in a fund title is not simply its first word: multi-word
+# brands, spellings the exchange directory abbreviates, and two cases where
+# the brand on the product is no longer the brand that runs it (ETF Securities
+# was acquired by and rebranded to Global X in 2022; the ASX directory still
+# carries the old titles).
+#
+# Longest first, because "Global X" has to beat a bare "Global".
+_ISSUER_ALIASES = [
+    ("betasharesw", "Betashares"),  # BetasharesWthBdr... -- unspaced in the directory
+    ("global x", "Global X"),
+    ("stt strt", "SPDR"),
+    ("state street", "SPDR"),
+    ("spdr", "SPDR"),
+    ("first trust", "First Trust"),
+    ("first sentier", "First Sentier"),
+    ("intelligent investor", "Intelligent Investor"),
+    ("investors mutual", "Investors Mutual"),
+    ("russell inv", "Russell Investments"),
+    ("janus henderson", "Janus Henderson"),
+    ("goldman sachs", "Goldman Sachs"),
+    ("t. rowe price", "T. Rowe Price"),
+    ("northern trust", "Northern Trust"),
+    ("loomis sayles", "Loomis Sayles"),
+    ("barrow hanley", "Barrow Hanley"),
+    ("vaughan nelson", "Vaughan Nelson"),
+    ("western asset", "Western Asset"),
+    ("resolution cap", "Resolution Capital"),
+    ("loftus peak", "Loftus Peak"),
+    ("l1 capital", "L1 Capital"),
+    ("ten cap", "Ten Cap"),
+    ("perth mint", "Perth Mint"),
+    ("alpha architect", "Alpha Architect"),
+    ("capital group", "Capital Group"),
+    ("neuberger berman", "Neuberger Berman"),
+    ("etfs ", "Global X"),
+    ("dimsnl", "Dimensional"),
+    ("vaneck", "VanEck"),
+    ("betashares", "Betashares"),
+    ("bs ", "Betashares"),
+    ("hejaz", "Hejaz"),
+    ("ft ", "First Trust"),
+]
+
+# A first word that describes the product rather than who issues it. Without
+# this, "Australian Major Bank Subordinated Debt ETF" would be attributed to an
+# issuer called "Australian".
+_GENERIC_FIRST_WORDS = {
+    "australian",
+    "global",
+    "us",
+    "usa",
+    "international",
+    "emerging",
+    "core",
+    "leverage",
+    "leveraged",
+    "ultra",
+    "max",
+    "daily",
+    "the",
+    "short",
+    "long",
+    "monthly",
+    "weekly",
+    "enhanced",
+    "active",
+    "managed",
+    "listed",
+    "world",
+    "asia",
+    "asian",
+    "europe",
+    "european",
+    "japan",
+    "china",
+    "india",
+    "gold",
+    "silver",
+    "bitcoin",
+    "ethereum",
+    "crypto",
+    "nasdaq",
+    "s&p",
+    "msci",
+    "ftse",
+    "high",
+    "low",
+    "small",
+    "mid",
+    "large",
+    "total",
+    "equity",
+    "bond",
+    "cash",
+}
+
+
+# Products that are issued by a manager. A common stock has no issuer in this
+# sense -- the company is the security -- and inferring one from its name
+# yields an "ATA" for "ATA Creativity Global", which is a fragment of a
+# company name masquerading as a fund manager. Category is gated the same way:
+# a stock's category is its sector, which its name does not carry.
+FUND_ASSET_TYPES = frozenset({"etf", "note"})
+
+
+def _strip_issuer(name: str) -> str:
+    """``name`` with its leading issuer removed, for classifying what it holds.
+
+    Without this, "Platinum Asia ETF" is precious metals and "Platinum
+    International ETF" is too -- Platinum Asset Management runs both and
+    neither holds an ounce of the stuff. An issuer's name is not evidence
+    about the assets.
+    """
+    text = str(name).strip()
+    lowered = text.lower()
+    for prefix, _ in _ISSUER_ALIASES:
+        if lowered.startswith(prefix):
+            return text[len(prefix) :].strip()
+    first = lowered.split()[0].strip(",.") if lowered.split() else ""
+    if first and first not in _GENERIC_FIRST_WORDS and len(first) >= 2:
+        return text.split(maxsplit=1)[1] if " " in text else ""
+    return text
+
+
+def infer_issuer(name: str) -> str:
+    """The fund manager behind a product, read out of its title.
+
+    Almost every ETF is named "<issuer> <what it holds> ETF", so the first
+    word carries it -- 82 distinct across the ASX universe, and every one of
+    them a real manager. The aliases above handle the brands that span two
+    words or that the directory abbreviates.
+
+    Returns "" rather than a guess when the title opens with a description
+    instead of a name: a wrong issuer is worse than a blank one, because a
+    blank is visibly missing while a wrong one gets filtered on.
+    """
+    lowered = str(name).strip().lower()
+    if not lowered:
+        return ""
+
+    for prefix, issuer in _ISSUER_ALIASES:
+        if lowered.startswith(prefix):
+            return issuer
+
+    first = lowered.split()[0].strip(",.")
+    if first in _GENERIC_FIRST_WORDS or len(first) < 2:
+        return ""
+    # Preserve the directory's own capitalisation, which is right for the
+    # iShares and abrdn spellings that a .title() would ruin.
+    return str(name).strip().split()[0].strip(",.")
+
+
+# Asset class first, theme second, and only where the title actually says so.
+# Order matters: "Global X Copper Miners" is metals rather than the equities it
+# technically holds, because that is how someone screening for copper thinks
+# of it.
+_CATEGORY_PATTERNS = [
+    ("crypto", r"bitcoin|ethereum|\bcrypto|digital asset|blockchain|solana|\bxrp\b|coinbase"),
+    ("precious metals", r"\bgold\b|silver|platinum|palladium|precious metal|bullion"),
+    (
+        "industrial metals",
+        r"copper|lithium|uranium|nickel|aluminium|aluminum|rare earth|"
+        r"battery|critical mineral|steel",
+    ),
+    (
+        "energy",
+        r"\boil\b|petroleum|natural gas|\bgas\b|energy|hydrogen|carbon|"
+        r"renewable|solar|wind\b|nuclear|coal",
+    ),
+    ("agriculture", r"agricultur|farmland|livestock|wheat|corn\b|soybean|\bfood\b"),
+    ("property", r"propert|\breit\b|real estate|residential|mortgage"),
+    ("infrastructure", r"infrastructure|\binfra\b|utilit|pipeline|airport|toll road"),
+    (
+        "fixed income",
+        # "Bd" and "Bnd" because the ASX directory abbreviates titles to fit a
+        # length limit: "iShares 15+ Year Australian Gov Bd ETF" is a bond fund
+        # and nothing in it spells the word.
+        r"\bbond|\bbd\b|\bbnd\b|ausbond|fixed income|treasur|\bcredit\b|\bcrdt|"
+        r"\bhyb\b|hybrid|floating rate|"
+        r"subordinated|\bdebt\b|\bgilt|income fund|"
+        r"yield maximiser|term deposit|\bcash\b|money market",
+    ),
+    ("currency", r"currency fund|\bfx\b|dollar index|\byen\b|\beuro\b currency"),
+    (
+        "technology",
+        r"technolog|semiconductor|robotic|automation|cyber|\bcloud\b|"
+        r"artificial intelligence|\bai\b|internet|software|fang|"
+        r"nasdaq ?100|\bdisruptio|innovat|digital",
+    ),
+    ("healthcare", r"health|biotech|pharma|medical|genomic"),
+    ("financials", r"\bbank|financial|\bfincl|insur|fintech"),
+    ("resources", r"resource|\bres sect|mining|miner|commodit"),
+    (
+        "multi-asset",
+        r"diversified|divrs|divers|balanced|multi-?asset|conservative|growth fund|"
+        r"retirement|target date",
+    ),
+    (
+        "equity",
+        r"\bequit|\beqs?\b|\bshares?\b|share fund|\bstock|companies|\bcoms\b|"
+        r"\bcos\b|\bsect\b|top ?\\d+|ex-?\\d+|hvstr|harvest|small ?cap|"
+        r"mid ?cap|large ?cap|smid|\bvalue\b|\bgrowth\b|dividend|\bindex\b|"
+        r"\bs&p\b|\bmsci\b|\bftse\b|asx ?\d|all ?ord|quality|momentum|"
+        r"\balpha\b|\bcore\b|\bsust|\besg\b",
+    ),
+]
+
+
+def infer_category(name: str) -> str:
+    """What a fund holds, in the terms someone screening would use.
+
+    Deliberately blank rather than guessed for the actively managed funds
+    whose titles describe a strategy and never an asset -- "Aoris
+    International B Managed Fund" says nothing this can honestly classify, and
+    filling it with "equity" on the assumption would make the column look
+    complete while being unverified on a third of the universe.
+    """
+    lowered = _strip_issuer(name).lower()
+    for category, pattern in _CATEGORY_PATTERNS:
+        if re.search(pattern, lowered):
+            return category
+    return ""
+
+
 def infer_asset_type(name: str, default: str = COMMON_STOCK) -> str:
     """Classify a security from its name.
 
@@ -202,6 +438,14 @@ def load_universe(path: str, default_asset_type: str = COMMON_STOCK) -> pd.DataF
     blank_exchange = df["exchange"].astype(str).str.strip() == ""
     df.loc[blank_exchange, "exchange"] = EXCHANGE_UNKNOWN
 
+    # Filled only where the file leaves them empty, so a hand-corrected issuer
+    # or category in the universe file always wins over the inference, and
+    # only for the asset types that have either.
+    is_fund = df["asset_type"].astype(str).str.lower().isin(FUND_ASSET_TYPES)
+    for column, infer in (("issuer", infer_issuer), ("category", infer_category)):
+        blank = is_fund & (df[column].astype(str).str.strip() == "")
+        df.loc[blank, column] = df.loc[blank, "name"].apply(infer)
+
     return df[UNIVERSE_COLUMNS]
 
 
@@ -263,12 +507,32 @@ def sync_universe(
         existing = load_universe(path, default_asset_type=default_asset_type_for(instrument_type))
         previous = set(existing["ticker"])
     except (FileNotFoundError, ValueError):
+        existing = None
         previous = set()
 
     current = set(incoming["ticker"])
     today = datetime.date.today().isoformat()
 
     incoming = incoming.assign(currency="USD", source_date=today)
+
+    # The directory knows tickers, names and types; it has never heard of an
+    # issuer or a category. Carry the ones already on file across by ticker,
+    # or a sync would silently drop every value the universe has accumulated
+    # -- including any corrected by hand. Tickers new to this sync fall
+    # through to the inference in load_universe.
+    for column in ("issuer", "category"):
+        carried = (
+            incoming["ticker"].map(existing.set_index("ticker")[column])
+            if existing is not None and column in existing.columns
+            else ""
+        )
+        incoming[column] = carried
+        blank = incoming[column].isna() | (incoming[column].astype(str).str.strip() == "")
+        blank &= incoming["asset_type"].astype(str).str.lower().isin(FUND_ASSET_TYPES)
+        infer = infer_issuer if column == "issuer" else infer_category
+        incoming.loc[blank, column] = incoming.loc[blank, "name"].apply(infer)
+        incoming[column] = incoming[column].fillna("")
+
     write_universe(incoming[UNIVERSE_COLUMNS], path)
 
     return {
