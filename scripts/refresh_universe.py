@@ -183,10 +183,12 @@ def main(exchange, instrument_type, from_file, trust_file, dry_run, force):
         # already asserts would only add a way for the run to fail.
         added, skipped, unresolved = candidates, 0, []
     elif exchange in US_EXCHANGES:
-        # The directory classifies them itself.
-        keep = set(directory[directory["asset_type"] == default_type]["ticker"]) & set(candidates)
-        added = sorted(keep)
-        skipped, unresolved = len(candidates) - len(added), []
+        # Everything the directory lists, whatever its type. A US universe
+        # file mirrors the exchange -- 13,135 rows across eight asset types --
+        # and the config's asset_types decides what is screened out of it at
+        # read time. Adding only the configured type dropped 46 new listings
+        # in a single week and would quietly stop the file being a mirror.
+        added, skipped, unresolved = candidates, 0, []
     elif candidates:
         print(f"asking the provider about {len(candidates)} new ASX code(s)...")
         kinds = classify_new_asx(candidates)
@@ -199,9 +201,13 @@ def main(exchange, instrument_type, from_file, trust_file, dry_run, force):
 
     names_preview = directory.set_index("ticker")["name"]
     print(f"\n  removed  {len(removed):>5}   no longer listed")
-    print(f"  added    {len(added):>5}   new listings of this type")
-    print(f"  skipped  {skipped:>5}   new listings of another type")
+    print(f"  added    {len(added):>5}   newly listed")
+    if skipped:
+        print(f"  skipped  {skipped:>5}   new listings of another type")
     print(f"  kept     {len(held & active):>5}")
+    if added and "asset_type" in directory.columns:
+        kinds = directory.set_index("ticker")["asset_type"].reindex(added).value_counts()
+        print("           " + ", ".join(f"{n} {kind}" for kind, n in kinds.items()))
     for ticker in removed[:20]:
         name = existing.loc[existing["ticker"] == ticker, "name"].iloc[0]
         print(f"    - {ticker:<8} {name[:56]}")
