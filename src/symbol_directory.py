@@ -296,10 +296,13 @@ _REPORT_NON_CODES = {
     "MONTH",
     "REPORT",
     "PAGE",
-    # ASX Limited trades as ASX:ASX, but it is a company and so never appears
-    # in a report of exchange-traded products. Here it is only ever the first
-    # word of the document's own title.
+    # ASX Limited trades as ASX:ASX, but it heads the document's own title
+    # here. ETF and ETP head sections. None is an ASX product code, unlike
+    # USD and AUD, which are BetaShares currency funds and must stay out of
+    # this set.
     "ASX",
+    "ETF",
+    "ETP",
 }
 
 
@@ -307,6 +310,16 @@ _REPORT_NON_CODES = {
 # heading has no figures either, and without a limit it would swallow the page
 # beneath it looking for some.
 _MAX_WRAPPED_LINES = 2
+
+# The report puts the security's form between the code and its name -- "ABG
+# Stapled Abacus Group", "AIQ Units Alternative Investment Trust", "8IH CDI 8I
+# Holdings Ltd" -- and it is not part of the name.
+_SECURITY_TYPE = re.compile(
+    r"^(?:cdi|stapled|shares?|units?|ord|ordinary|fpo|securities)\b\s*", re.IGNORECASE
+)
+
+# Columns that are neither a figure nor part of the name.
+_NOT_APPLICABLE = re.compile(r"\s+n/a\b", re.IGNORECASE)
 
 
 def _unwrap(text: str):
@@ -374,7 +387,9 @@ def parse_asx_report_text(text: str) -> pd.DataFrame:
         figure = _FIRST_FIGURE.search(rest)
         if figure is None:
             continue
-        name = rest[: figure.start()].strip(" .,-")
+        name = rest[: figure.start()]
+        name = _NOT_APPLICABLE.split(name)[0]
+        name = _SECURITY_TYPE.sub("", name).strip(" .,-")
         # A fund name starts with a letter. "TOTAL 402 products" does not, and
         # a heading is otherwise shaped exactly like a row.
         if len(name) < 4 or not name[:1].isalpha():
