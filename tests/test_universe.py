@@ -1,5 +1,7 @@
 """Tests for instrument universe loading, classification and normalisation."""
 
+from pathlib import Path
+
 import pytest
 
 from universe import (
@@ -277,3 +279,22 @@ def test_a_value_in_the_file_wins_over_the_inference(tmp_path):
     row = load_universe(str(path)).iloc[0]
     assert row["issuer"] == "Ellerston"
     assert row["category"] == "property"
+
+
+def test_the_asx_universe_holds_no_company_labelled_as_a_fund():
+    """A directory pull once attached invented "Smart ..." ETF names to eight
+    real ASX companies -- APA Group, Aspermont, Botanix and others -- which put
+    operating companies into an ETF screen. ASP then showed a +11.6% weekly
+    "ETF" move on eight units of volume.
+
+    They are gone from the file. This pins their absence, because enrichment
+    cannot catch them: the provider is asked and answers EQUITY, but an EQUITY
+    label is not trusted to override the universe's declared type, so the type
+    falls back to this config's default -- which is etf.
+    """
+    path = Path(__file__).resolve().parents[1] / "config" / "asx_etf.csv"
+    df = load_universe(str(path), default_asset_type=ETF)
+
+    assert not {"APA", "ASP", "AUE", "BOT", "BTC", "GPR", "INF", "USM"} & set(df["ticker"])
+    # And the file is what it says it is: an ETF universe, nothing else.
+    assert set(df["asset_type"]) <= {ETF, "unit"}

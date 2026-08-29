@@ -954,6 +954,31 @@ One trap worth knowing: the issuer's own name is stripped before the category
 is matched. Platinum Asset Management runs `Platinum Asia ETF` and `Platinum
 International ETF`, and neither holds an ounce of the metal.
 
+### When a name is wrong
+
+A directory pull on 22 Aug 2026 attached invented `Smart ...` ETF names to
+eight real ASX companies — `APA` (APA Group, a gas utility), `ASP` (Aspermont,
+a media company), `AUE`, `BOT`, `BTC`, `GPR`, `INF` and `USM`. That put
+operating companies into an ETF screen, where `ASP` showed a +11.6% weekly
+"ETF" move on eight units of volume.
+
+Enrichment could never have caught them, and it is worth understanding why.
+`refresh_universe` *did* ask the provider about `APA`, and the provider *did*
+answer `EQUITY`. But an `EQUITY` label is deliberately not trusted to override
+the universe's declared type — it marks many genuine ETFs as equities — so the
+answer is discarded and the type falls back to the config's default, which for
+this file is `etf`. A company sitting in an ETF universe is therefore stamped
+`etf` on every run, whatever the provider says.
+
+That also means correcting only the name would not have been enough: with the
+name fixed, the type still falls back to `etf`. Membership is the thing that
+was wrong.
+
+They are removed from `config/asx_etf.csv`, and a test pins their absence.
+Nothing re-adds them: the ASX has no bulk symbol directory, and
+`refresh_universe` enriches and prunes the members it is given without ever
+introducing new ones.
+
 ### Instrument types
 
 Every instrument is classified into exactly one `asset_type`. `asset_types` in
