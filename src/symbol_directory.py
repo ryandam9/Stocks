@@ -266,14 +266,42 @@ def fetch_asx_directory(timeout: int = 60, text: str | None = None) -> pd.DataFr
 
 # ------------------------------------- ASX investment products report
 
-# A row in the report's ETP tables reads as a code, the fund's name, then
-# columns of figures. The name ends where the numbers begin.
+# A product row in the report reads: code, the security's form, its name, then
+# columns of figures.
 #
-# An ASX code is three to six alphanumerics, not three or four letters:
-# A200, 1GOV and 28BB carry digits, and ETPMAG and PMGOLD are six long.
-# Letters-only-and-four dropped 32 funds from a 452-row report, and did it
-# under the caller's drop guard, so it would have been written.
-_REPORT_ROW = re.compile(r"^([A-Z0-9]{3,6})\s+(.+)$")
+#   URNM   ETF      Betashares Global Uranium ETF          0.69 311.31 ...
+#   IMPQ   Active   Perennial Better Future Active ETF     0.99  24.22 ...
+#   ETPMPM SP       Global X Physical Precious Metals      0.44 128.27 ...
+#   AFI    Shares   Australian Foundation Investment Co    0.16 ...
+#   APA    Stapled  APA Group                             ...
+#
+# The caret marks a footnote on some rows and is not part of the code.
+_REPORT_ROW = re.compile(r"^\^?\s*([A-Z0-9]{3,6})\s+([A-Za-z]+)\s+(.+)$")
+
+# That second column is the classifier, and it is the reason this report is
+# worth reading at all. The document covers the whole ASX product suite --
+# about 600 securities -- so taking every row put Argo, Atlas Arteria, Arena
+# REIT and APA Group into an ETF universe. These four forms are the funds and
+# structured products; Shares is a listed investment company, Stapled a REIT
+# or infrastructure group, Units a listed trust, and Index a benchmark rather
+# than a product at all.
+_REPORT_FUND_TYPES = frozenset({"ETF", "ACTIVE", "COMPLEX", "SP"})
+
+# Every form the report uses, funds and otherwise. A line only counts as a
+# product row if its second column is one of these -- otherwise "ASX Fund
+# Segment Market Capitalisation" reads as code ASX, form "Fund", and absorbs
+# the first fund listed beneath it.
+_REPORT_FORMS = _REPORT_FUND_TYPES | frozenset(
+    {"SHARES", "STAPLED", "UNITS", "ORD", "FPO", "INDEX", "CDI"}
+)
+
+
+def _is_report_row(line: str) -> bool:
+    """Whether a line is a product row rather than a heading."""
+    match = _REPORT_ROW.match(line)
+    return bool(match) and match.group(2).upper() in _REPORT_FORMS
+
+
 # Where the statistics columns begin. Deliberately not "the first digit": a
 # fund name carries numbers of its own -- "Betashares Australia 200 ETF",
 # "VanEck 1-5 Year Australian Govt Bd ETF" -- and cutting at those truncated
@@ -282,59 +310,23 @@ _REPORT_ROW = re.compile(r"^([A-Z0-9]{3,6})\s+(.+)$")
 # inside a fund's name has neither.
 _FIRST_FIGURE = re.compile(r"\s(?=\(?-?\$?[\d,]*\d\.\d|\(?-?\$?[\d,]*\d%)")
 
-# Words that head a line in the report but can never be an ASX code. Kept
-# deliberately short: USD and AUD look like column labels and are real funds
-# (BetaShares US Dollar ETF trades as ASX:USD), and excluding a word that is
-# also a ticker loses a fund silently. A stray heading that slips through
-# instead shows up as an addition in the diff, where it is seen and removed.
-_REPORT_NON_CODES = {
-    "TOTAL",
-    "FUNDS",
-    "CODE",
-    "NAME",
-    "MARKET",
-    "MONTH",
-    "REPORT",
-    "PAGE",
-    # ASX Limited trades as ASX:ASX, but it heads the document's own title
-    # here. ETF and ETP head sections. None is an ASX product code, unlike
-    # USD and AUD, which are BetaShares currency funds and must stay out of
-    # this set.
-    "ASX",
-    "ETF",
-    "ETP",
-}
-
-
 # At most this many continuation lines are pulled into one row. A section
 # heading has no figures either, and without a limit it would swallow the page
 # beneath it looking for some.
 _MAX_WRAPPED_LINES = 2
 
-# The report puts the security's form between the code and its name -- "ABG
-# Stapled Abacus Group", "AIQ Units Alternative Investment Trust", "8IH CDI 8I
-# Holdings Ltd" -- and it is not part of the name.
-_SECURITY_TYPE = re.compile(
-    r"^(?:cdi|stapled|shares?|units?|ord|ordinary|fpo|securities)\b\s*", re.IGNORECASE
-)
-
-# Columns that are neither a figure nor part of the name.
-_NOT_APPLICABLE = re.compile(r"\s+n/a\b", re.IGNORECASE)
-
 
 def _unwrap(text: str):
     """Yield report lines with wrapped rows rejoined.
 
-    A long fund name wraps in the PDF's table and takes the row's figures onto
-    the next line -- "BBFD Betashares Geared Short US Treasury Bond Currency
-    Hedged Complex" then "ETF 168.0 78.0 0.68%". Parsed line by line, the
-    first half has no figures and the second half has no code, so the fund
-    disappears. Lines are therefore joined until they carry a figure.
+    A long fund name can wrap in the PDF's table and take the row's figures
+    onto the next line. Parsed line by line, the first half has no figures and
+    the second half has no code, so the fund disappears. Lines are therefore
+    joined until they carry a figure.
 
-    A buffer that does not itself begin with a code is a heading, and is
-    abandoned rather than extended. Without that, the column header "($m)
-    Turnover MER" -- which has no figures either -- absorbs the first fund
-    underneath it and that fund is lost.
+    A buffer that does not itself begin with a row is a heading, and is
+    abandoned rather than extended. Without that, a column header -- which has
+    no figures either -- absorbs the first fund underneath it.
     """
     buffer = ""
     joined = 0
@@ -342,7 +334,7 @@ def _unwrap(text: str):
         line = raw.strip()
         if not line:
             continue
-        if buffer and _REPORT_ROW.match(buffer):
+        if buffer and _is_report_row(buffer):
             buffer = f"{buffer} {line}"
             joined += 1
         else:
@@ -355,18 +347,16 @@ def _unwrap(text: str):
 
 
 def parse_asx_report_text(text: str) -> pd.DataFrame:
-    """ASX codes and fund names out of the Investment Products report.
+    """Funds and structured products out of the ASX Investment Products report.
 
-    The ASX publishes this monthly as a PDF, and it is the only list that is
-    *only* exchange-traded products -- the company directory carries every
-    quoted code without marking which are funds. That makes it the right
-    source for an ETF universe and the wrong shape for a machine: there is no
-    CSV, so the rows are read out of the extracted text.
+    The ASX publishes this monthly as a PDF. Unlike the company directory it
+    says what each security *is*, in the column beside the code -- so it can
+    answer membership and classification together, and a new listing needs no
+    provider lookup to be admitted to a fund universe.
 
-    Deliberately loose about the columns and strict about the code, because
-    the report's layout changes between months while an ASX code does not.
-    Anything it cannot read is simply not returned, which the caller's drop
-    guard then refuses to act on.
+    It is not a list of funds, though: it covers listed investment companies,
+    A-REITs and infrastructure funds in the same tables. Only the forms in
+    :data:`_REPORT_FUND_TYPES` are returned.
 
     Raises:
         ValueError: nothing in the text looked like a product row.
@@ -376,22 +366,19 @@ def parse_asx_report_text(text: str) -> pd.DataFrame:
         match = _REPORT_ROW.match(line)
         if not match:
             continue
-        code, rest = match.group(1), match.group(2).strip()
-        # A run of digits is a figure that happens to start a line, not a code.
-        if code in _REPORT_NON_CODES or not any(c.isalpha() for c in code):
+        code, form, rest = match.groups()
+        if form.upper() not in _REPORT_FUND_TYPES:
             continue
-        # Cut the name where the figures start. A row with no figures at all
-        # is not a product: the report is a statistics table, and every ETP
-        # carries a market cap. This is what stops the document's own title,
-        # "ASX Investment Products", entering the universe as ticker ASX.
+        # A run of digits is a figure that happens to start a line, not a code.
+        if not any(character.isalpha() for character in code):
+            continue
+
+        # A row with no figures at all is not a product: the report is a
+        # statistics table and every fund carries a management fee.
         figure = _FIRST_FIGURE.search(rest)
         if figure is None:
             continue
-        name = rest[: figure.start()]
-        name = _NOT_APPLICABLE.split(name)[0]
-        name = _SECURITY_TYPE.sub("", name).strip(" .,-")
-        # A fund name starts with a letter. "TOTAL 402 products" does not, and
-        # a heading is otherwise shaped exactly like a row.
+        name = rest[: figure.start()].strip(" .,-")
         if len(name) < 4 or not name[:1].isalpha():
             continue
         rows.append({"ticker": code, "name": name, "exchange": "ASX"})

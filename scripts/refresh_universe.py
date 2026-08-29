@@ -144,19 +144,14 @@ def main(exchange, instrument_type, from_file, trust_file, dry_run, force):
     print(f"{path}: {len(existing)} tickers")
 
     if is_asx_report(from_file):
-        # NOT every row is an ETP. The report covers the whole ASX product
-        # suite -- ETFs and ETPs, but also listed investment companies,
-        # A-REITs and infrastructure funds -- so it lists Argo, Atlas Arteria
-        # and APA Group alongside the funds. Treating it as a fund list added
-        # 143 companies and trusts to an ETF universe in one run, APA among
-        # them, which is the ticker this repository removed by hand last week.
-        #
-        # So its rows are candidates like any other source's, and the provider
-        # decides. That costs one lookup per new code and is the only thing
-        # standing between a company and a fund screen.
-        print("reading the ASX Investment Products report")
-        print("  note: it covers LICs, A-REITs and infrastructure funds too,")
-        print("  so each new code is still checked against the provider")
+        # The report covers the whole ASX product suite -- listed investment
+        # companies, A-REITs and infrastructure funds share its tables with
+        # the funds -- but it names the form of each security in the column
+        # beside its code, and the parser keeps only the fund forms. So the
+        # document has already classified every row it returns, and asking
+        # the provider to confirm it would only add a way to fail.
+        trust_file = True
+        print("reading the ASX Investment Products report (funds and ETPs only)")
 
     directory = fetch_directory(exchange, from_file)
     print(f"exchange directory: {len(directory)} listings")
