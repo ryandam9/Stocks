@@ -119,3 +119,31 @@ def test_code_revision_falls_back_to_git(monkeypatch):
     monkeypatch.delenv(runmeta.CODE_REVISION_ENV, raising=False)
     # No repository at this path, and no baked value: must not raise.
     assert runmeta.code_revision("/nonexistent") == "unknown"
+
+
+def test_ensure_universe_overwrites_a_stale_working_copy(tmp_path, monkeypatch):
+    """The committed CSV is the only source of truth for what is screened.
+
+    A working copy on a persistent volume is a leftover, not a record. If it
+    outranked the file in the image, a ticker removed from the repository
+    would keep being screened forever -- and nothing at runtime is allowed to
+    decide membership.
+    """
+    monkeypatch.delenv("STOCKS_DATA_ROOT", raising=False)
+    write_config(tmp_path, monkeypatch, BASE)
+    cfg = load_config("US", "stocks")
+
+    os.makedirs(os.path.dirname(cfg.bundled_ticker_file), exist_ok=True)
+    with open(cfg.bundled_ticker_file, "w") as handle:
+        handle.write("ticker,name\nKEEP,Keep Inc\n")
+
+    os.makedirs(cfg.universe_dir, exist_ok=True)
+    with open(cfg.ticker_file, "w") as handle:
+        handle.write("ticker,name\nSTALE,Left Over Inc\n")
+
+    cfg.ensure_universe()
+
+    with open(cfg.ticker_file) as handle:
+        refreshed = handle.read()
+    assert "KEEP" in refreshed
+    assert "STALE" not in refreshed

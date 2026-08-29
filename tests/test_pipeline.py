@@ -187,7 +187,6 @@ def _run_cli(monkeypatch, job, *extra):
     import run
 
     uploaded = []
-    monkeypatch.setattr(run, "_sync", lambda *a, **k: None)
     monkeypatch.setattr(run, "_fetch", lambda *a, **k: None)
     monkeypatch.setattr(run, "analyze_stocks", lambda *a, **k: None)
     monkeypatch.setattr(run.pipeline, "publish", lambda cfg: cfg.db_path)
@@ -205,13 +204,13 @@ def _run_cli(monkeypatch, job, *extra):
     return result, uploaded
 
 
-@pytest.mark.parametrize("job", ["sync", "fetch"])
+@pytest.mark.parametrize("job", ["fetch"])
 def test_non_publishing_jobs_never_upload(job, monkeypatch):
     """A job that builds no database must not republish a stale one.
 
-    `sync` and `fetch` leave whatever database an earlier run wrote in place.
-    Uploading it would send results stamped with that run's run_id and
-    data_as_of, presented as though this run had produced them.
+    `fetch` leaves whatever database an earlier run wrote in place. Uploading
+    it would send results stamped with that run's run_id and data_as_of,
+    presented as though this run had produced them.
     """
     monkeypatch.setenv("S3_BUCKET", "s3://example-bucket")
     monkeypatch.setenv("S3_AUTO_UPLOAD", "true")
@@ -234,10 +233,10 @@ def test_publishing_jobs_still_upload(job, monkeypatch):
 
 
 def test_explicit_upload_on_a_non_publishing_job_is_an_error(monkeypatch):
-    """--upload asks for something `sync` cannot do; say so rather than no-op."""
+    """--upload asks for something `fetch` cannot do; say so rather than no-op."""
     monkeypatch.setenv("S3_BUCKET", "s3://example-bucket")
 
-    result, uploaded = _run_cli(monkeypatch, "sync", "--upload")
+    result, uploaded = _run_cli(monkeypatch, "fetch", "--upload")
 
     assert uploaded == []
     assert result.exit_code != 0
@@ -338,3 +337,16 @@ def test_tables_exist_even_without_a_manifest(tmp_path):
 
     assert conn.execute("SELECT COUNT(*) FROM run_metadata").fetchone() == (0,)
     assert conn.execute("SELECT COUNT(*) FROM screen_funnel").fetchone() == (0,)
+
+
+def test_there_is_no_sync_job(monkeypatch):
+    """Membership is decided before the image is built, never inside a run.
+
+    A scheduled task runs `all`. While `all` included a sync, every run could
+    add or drop tickers against a live provider -- which is how eight ASX
+    companies with invented ETF names entered an ETF screen.
+    """
+    result, uploaded = _run_cli(monkeypatch, "sync")
+
+    assert result.exit_code != 0
+    assert uploaded == []

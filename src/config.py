@@ -248,12 +248,13 @@ class StockConfig:
 
     @property
     def ticker_file(self) -> str:
-        """The live universe file, on the data volume.
+        """The working copy of the universe, on the data volume.
 
-        ``universe.py sync`` and ``enrich`` rewrite this file, so it cannot
-        live in the repository: that directory is read-only in a container and
-        the edit would be lost when the task exits. It is seeded from
-        :attr:`bundled_ticker_file` by :meth:`ensure_universe`.
+        A copy rather than the committed file itself because the pipeline
+        writes derived artefacts beside it and the repository directory is
+        read-only in a container. Its *contents* are never the pipeline's to
+        change: :meth:`ensure_universe` refreshes it from the committed file
+        on every run.
         """
         return os.path.join(self.universe_dir, os.path.basename(self.bundled_ticker_file))
 
@@ -263,23 +264,30 @@ class StockConfig:
         return os.path.join(os.path.dirname(self.db_path), "universe")
 
     def ensure_universe(self) -> str:
-        """Copy the bundled universe onto the data volume if not already there.
+        """Refresh the working universe from the committed file.
+
+        Copied on *every* run, not only when missing. The committed CSV is the
+        only source of truth for what is screened, and nothing at runtime adds
+        a ticker or removes one -- so a working copy left behind by an earlier
+        run on a persistent volume must never outrank the file in the image.
+        Membership changes by editing that CSV and rebuilding, which is what
+        ``scripts/refresh_universe.py`` is for.
 
         Returns:
-            Path to the live universe file.
+            Path to the working universe file.
 
         Raises:
-            FileNotFoundError: neither a live nor a bundled universe exists.
+            FileNotFoundError: no committed universe, and no working copy to
+                fall back on.
         """
         import shutil
 
         live = self.ticker_file
-        if os.path.exists(live):
-            return live
         if not os.path.exists(self.bundled_ticker_file):
+            if os.path.exists(live):
+                return live
             raise FileNotFoundError(
-                f"No universe file. Expected one at {live} or a bundled copy at "
-                f"{self.bundled_ticker_file}."
+                f"No universe file. Expected a committed copy at {self.bundled_ticker_file}."
             )
         os.makedirs(os.path.dirname(live), exist_ok=True)
         shutil.copy2(self.bundled_ticker_file, live)

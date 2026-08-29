@@ -75,34 +75,29 @@ goes](#where-data-goes)).
 ```bash
 cd /path/to/stocks
 
-# 1. Sync the instrument universe from the exchange symbol directory.
-#    Adds new listings, drops delisted ones, and classifies every security.
-#    Optional: skip it to keep the committed snapshot exactly as-is.
-uv run src/universe.py sync US stocks
-
-# 2. Fetch ~1 year of end-of-day prices. Only common stock is requested.
+# 1. Fetch ~1 year of end-of-day prices. Only common stock is requested.
 ./scripts/fetch_prices.sh US stocks 400
 
-# 3. Screen for growth and publish the SQLite database.
+# 2. Screen for growth and publish the SQLite database.
 ./scripts/run_analysis.sh US stocks
 ```
+
+The universe is not touched here. `config/us_stocks.csv` is the only thing
+that decides what gets screened, and it changes by running
+[`scripts/refresh_universe.py`](#changing-the-universe) and committing the
+diff — never during a run.
 
 What you should see:
 
 ```
-# step 1 — nothing changed since the last sync in this example
-Downloading symbol directory for US...
-  13135 symbols (+0 added, -0 removed, 13135 retained)
-Asset types:
-  common_stock 5750 | etf 5670 | preferred 487 | warrant 473 | unit 295 | ...
 
-# step 2
+# step 1
   Universe: 5750 of 13135 instruments match ['common_stock'] (7385 excluded)
   Batch 58/58 (50 tickers)
   FETCH SUMMARY: 5749/5750 tickers fetched successfully
   Data saved to: .../us/stocks/us_stocks_eod.csv
 
-# step 3
+# step 2
   Data as of 2026-08-21 (1 day(s) old)
   --- Tickers with >25.0% growth over the last 1_year ---
       Universe in window             5,749
@@ -119,23 +114,17 @@ Asset types:
   DB published: .../us.db
 ```
 
-Step 2 takes about 4 minutes; step 3 about 40 seconds.
+Step 1 takes about 4 minutes; step 2 about 40 seconds.
 
 ### ASX ETFs — full run
 
 ```bash
 cd /path/to/stocks
 
-# 1. Refresh metadata for the existing universe, dropping delisted funds.
-#    ASX has no bulk symbol directory, so this uses per-ticker lookups and
-#    "sync" does not apply. --prune removes funds the provider no longer
-#    lists, which otherwise fail every fetch forever.
-uv run src/universe.py enrich ASX etf --prune
-
-# 2. Fetch ~1 year of end-of-day prices.
+# 1. Fetch ~1 year of end-of-day prices.
 ./scripts/fetch_prices.sh ASX etf 400
 
-# 3. Screen for growth and publish the SQLite database.
+# 2. Screen for growth and publish the SQLite database.
 ./scripts/run_analysis.sh ASX etf
 ```
 
@@ -190,7 +179,7 @@ says what to do:
 
 | Message | Meaning | Fix |
 |---|---|---|
-| `Only 416/477 tickers (87.2%) returned data, below the required 95.0%` | Too much of the universe failed to fetch; the previous price file was left untouched | Usually delisted members: `universe.py enrich <EX> <TYPE> --prune`, then re-fetch. Or `--allow-partial` to publish anyway |
+| `Only 416/477 tickers (87.2%) returned data, below the required 95.0%` | Too much of the universe failed to fetch; the previous price file was left untouched | Usually delisted members: `scripts/refresh_universe.py --exchange <EX> --instrument-type <TYPE>`, commit, rebuild, then re-fetch. Or `--allow-partial` to publish anyway |
 | `Price data is 81 days old (newest row ..., limit 5 days)` | The price file is stale, so the screen would not reflect the market | Re-run the fetch, or `run_analysis.sh ... --allow-stale` |
 | `No config file for ASX/stocks` | That universe does not exist | Only `US stocks` and `ASX etf` ship; see [Supported universes](#supported-universes) |
 | `Not pruning: N lookups were rate limited` | The provider throttled, so a dead listing cannot be told from a failed lookup | Wait a few minutes and re-run |
@@ -228,7 +217,7 @@ cd /path/to/stocks
 eval "$(aws configure export-credentials --format env)"
 
 docker compose build          # only after editing src/ or config/
-docker compose run --rm asx   # ASX ETFs:   sync -> fetch -> analyse -> publish -> upload
+docker compose run --rm asx   # ASX ETFs:   fetch -> analyse -> publish -> upload
 docker compose run --rm us    # US stocks:  same
 ```
 
@@ -306,9 +295,11 @@ run happened; busybox `cp` in the sqlite image then warns that it cannot
 preserve ownership, which is harmless.
 
 **Universe seeding.** The committed universes ship inside the image and are
-copied to `/data/universe/` on first run. `sync` and `enrich` then rewrite the
-copy on the volume, never the image layer, so membership survives across
-containers and the repository stays read-only.
+copied to `/data/universe/` at the start of *every* run, overwriting whatever
+is there. The copy exists only because the repository directory is read-only
+in a container; its contents are never the pipeline's to change. Nothing at
+runtime adds a ticker or removes one, so the image's CSV is what got screened,
+and a stale working copy on a persistent volume cannot outrank it.
 
 **Exit codes** are stable so a scheduler can branch without parsing logs:
 
@@ -324,7 +315,8 @@ containers and the repository stays read-only.
 deliberately: the fetch boundary resolves the exchange's local date through
 `zoneinfo`, and without it the boundary silently falls back to UTC — a full
 day out for ASX. Outbound network is needed to
-`query1/query2.finance.yahoo.com` and `www.nasdaqtrader.com`.
+`query1/query2.finance.yahoo.com` only — the exchange directories are read by
+`scripts/refresh_universe.py` on a developer machine, never by the container.
 
 The container never invokes the shell scripts. `src/run.py` drives everything
 and `src/pipeline.py` builds the database with the `sqlite3` standard library,
@@ -607,7 +599,6 @@ stay defined but stop firing.
 **Screen US common stock only** — this is the shipped default; no change needed:
 
 ```bash
-uv run src/universe.py sync US stocks           # refresh membership + classification
 ./scripts/fetch_prices.sh US stocks 400         # fetches only common stock
 ./scripts/run_analysis.sh US stocks
 ```
@@ -638,8 +629,8 @@ cut -d',' -f4 config/us_stocks.csv | sort | uniq -c | sort -rn
 
 **Restrict to a single venue** — copy the US config to
 `config/nasdaq_stocks_config.yaml`, point `data_dir`/`db_path` somewhere new,
-then sync: `universe.py sync NASDAQ stocks` restricts membership to the Nasdaq
-venue rather than all US exchanges.
+then `scripts/refresh_universe.py --exchange NASDAQ --instrument-type stocks`,
+which restricts membership to the Nasdaq venue rather than all US exchanges.
 
 **Include instrument types that are normally excluded** — screening warrants or
 unclassified instruments is legitimate, just explicit:
@@ -648,10 +639,6 @@ unclassified instruments is legitimate, just explicit:
 asset_types: [common_stock, unknown]    # also accept unclassified instruments
 asset_types: [common_stock, etf]        # stocks and funds together
 ```
-
-**Skip the universe sync** to keep the committed snapshot exactly as-is —
-`sync` replaces membership from the live directory, adding new listings and
-dropping delisted ones. Fetch and analysis work fine without it.
 
 **Screen stale data deliberately** (e.g. the fetch is failing but you want to
 look anyway):
@@ -673,7 +660,8 @@ look anyway):
 `US` is the shipped US universe because the exchange symbol directory covers
 every US venue and links are built per ticker. `NASDAQ` and `NYSE` remain
 available if you want a venue-restricted universe; create
-`config/<exchange>_<type>_config.yaml` and run `universe.py sync` against it.
+`config/<exchange>_<type>_config.yaml` and run `scripts/refresh_universe.py`
+against it.
 
 ### ASX coverage
 
@@ -684,12 +672,12 @@ screening the wrong thing.
 
 Two differences from the US universe are worth knowing:
 
-- **`sync` does not apply to ASX.** It reads the US exchange symbol directory,
-  so it only covers `US`, `NASDAQ` and `NYSE`. For ASX, use
-  `uv run src/universe.py enrich ASX etf`, which fills metadata for the tickers
-  already in the file via per-ticker provider lookups. That path is slower and
-  the provider rate-limits it, so the command retries with backoff and reports
-  anything it could not resolve.
+- **The ASX has no bulk symbol directory** in the sense the US does. Its
+  company directory gives membership but not classification — it lists every
+  quoted code, ETPs included, without saying which are funds. So
+  `refresh_universe.py` drops what the directory no longer lists and asks the
+  price provider about each *new* code before letting it into a fund universe.
+  See [Changing the universe](#changing-the-universe).
 - **Thresholds are tuned per market.** ASX ETFs turn over roughly 8k shares a
   day against ~188k for US equities, and market-maker creation/redemption means
   screen volume understates their real liquidity. `config/asx_etf_config.yaml`
@@ -705,8 +693,7 @@ shell wrappers do not expose:
 uv run src/fetch_prices.py  --exchange US --instrument-type stocks \
     --period 400 --batch-size 100 --min-success-ratio 0.95 --log-file logs/us.log
 uv run src/analysis.py      --exchange US --instrument-type stocks [--allow-stale]
-uv run src/universe.py      sync US stocks          # membership + class (US only)
-uv run src/universe.py      enrich ASX etf [--prune]  # metadata, any market
+scripts/refresh_universe.py --exchange US --instrument-type stocks [--dry-run]
 uv run src/config.py        US stocks db_path       # resolve any config value
 ```
 
@@ -719,7 +706,9 @@ Useful flags:
 | `--min-success-ratio F` | fetch | Completeness gate (default 0.95) |
 | `--allow-partial` | fetch | Publish even below that ratio |
 | `--allow-stale` | analysis | Screen price data older than `max_data_age_days` |
-| `--prune` | universe enrich | Drop instruments the provider no longer lists |
+| `--dry-run` | refresh_universe | Report the membership change without writing it |
+| `--from-file PATH` | refresh_universe | Use a directory file saved by hand, when the exchange blocks the download |
+| `--force` | refresh_universe | Write even when the 10% drop guard trips |
 | `--upload` | run_analysis.sh | Upload the DB to S3 (needs `S3_BUCKET`) |
 
 ### Publishing to S3
@@ -910,8 +899,8 @@ GOLD,Global X Physical Gold Structured,ASX,etf,Global X,precious metals,,2026-08
 Both are read out of the fund's own title, because an ETF is named
 `<issuer> <what it holds> ETF` almost without exception. A value already in the
 file always wins, so a correction made by hand is never overwritten — and the
-`sync` job carries both columns across by ticker, so a universe refresh cannot
-wipe them.
+refresh script carries both columns across by ticker, so a universe refresh
+cannot wipe them.
 
 | | ASX | US |
 |---|---|---|
@@ -1021,20 +1010,50 @@ asset_types: [common_stock, unknown]   # accept unclassified instruments too
 Warrants and units genuinely trade, so screening them is a legitimate choice —
 just an explicit one.
 
-Two commands, deliberately distinct:
+### Changing the universe
 
-| Command | Does |
-|---|---|
-| `universe.py sync <EX> <TYPE>` | Replaces membership *and* metadata from the US symbol directory, reporting adds/removes |
-| `universe.py enrich <EX> <TYPE>` | Fills metadata for tickers already in the file via provider lookups; works for any market |
+**Nothing at runtime adds a ticker or removes one.** The committed CSV is the
+only thing that decides what gets screened; the pipeline reads it and never
+writes it. Membership changes on a developer machine, against the exchange's
+own listings, and lands as a reviewable diff:
+
+```bash
+scripts/refresh_universe.py --exchange US  --instrument-type stocks --dry-run
+scripts/refresh_universe.py --exchange ASX --instrument-type etf
+git diff config/                # review
+git commit && ./scripts/build_image.sh --push
+```
+
+The two markets are handled differently because their sources are different
+kinds of thing:
+
+| | Source | Membership | Classification |
+|---|---|---|---|
+| US | `nasdaqlisted.txt` + `otherlisted.txt` | whatever the files say | the files carry an ETF flag |
+| ASX | company directory CSV | whatever the directory lists | the directory has none — each *new* code gets one provider lookup |
+
+Three things the script will not do:
+
+- **Drop more than 10% of a universe** without `--force`. The failure that
+  guards against is not a wave of delistings but a source that changed shape,
+  or one that turns out not to list funds at all — in which case every ETF
+  looks delisted at once.
+- **Add a new ASX code the provider would not classify.** An unanswered lookup
+  is not the same as "not a fund"; those codes are listed for you to re-run or
+  add by hand, rather than silently dropped.
+- **Touch `issuer` or `category` on a row it keeps.** Those are yours, and a
+  hand correction survives every refresh.
+
+If the exchange blocks the download — the ASX does, intermittently — save the
+file by hand and pass `--from-file`.
 
 The structured form carries real metadata:
 
 ```csv
-ticker,name,exchange,asset_type,currency,source_date
-A,Agilent Technologies Inc.,NYSE,common_stock,,2026-08-22
-AAPL,Apple Inc.,NASDAQ,common_stock,,2026-08-22
-AACIW,Armada Acquisition Corp. III Warrant,NASDAQ,warrant,,2026-08-22
+ticker,name,exchange,asset_type,issuer,category,currency,source_date
+A,Agilent Technologies Inc.,NYSE,common_stock,"Agilent Technologies, Inc.",,USD,2026-08-22
+AAPL,Apple Inc.,NASDAQ,common_stock,Apple Inc.,,USD,2026-08-22
+AACIW,Armada Acquisition Corp. III Warrant,NASDAQ,warrant,Armada Acquisition Corp. III,,USD,2026-08-22
 ```
 
 This matters for two reasons:
@@ -1049,11 +1068,8 @@ This matters for two reasons:
   [Instrument types](#instrument-types) below.
 
 Legacy `TICKER~Name` files still load — asset type is inferred from the
-security name and exchange is recorded as `UNKNOWN`. Upgrade one with:
-
-```bash
-uv run src/universe.py sync US stocks
-```
+security name and exchange is recorded as `UNKNOWN`. Upgrade one by running
+`scripts/refresh_universe.py` against it.
 
 ## Configuration
 
@@ -1349,5 +1365,5 @@ Provider calls are stubbed throughout, so the suite never depends on Yahoo
 being reachable.
 
 ## Resources
-- [Nasdaq Trader symbol directory](https://www.nasdaqtrader.com/trader.aspx?id=symboldirdefs) — the authoritative source `universe.py sync` reads
+- [Nasdaq Trader symbol directory](https://www.nasdaqtrader.com/trader.aspx?id=symboldirdefs) — the authoritative source `scripts/refresh_universe.py` reads for US listings
 - [Nasdaq Screener](https://www.nasdaq.com/market-activity/stocks/screener)

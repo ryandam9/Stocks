@@ -687,6 +687,17 @@ def test_dotenv_missing_file_is_harmless(tmp_path):
     assert cfg_mod.load_dotenv(str(tmp_path / "nope.env")) == {}
 
 
+def _load_script(name):
+    """Import a tool from scripts/, which is not on the path like src/ is."""
+    import importlib.util
+
+    path = os.path.join(PROJECT_ROOT, "scripts", f"{name}.py")
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def test_readme_documents_only_real_cli_flags():
     """Every --flag the README shows must exist in the CLI that owns it."""
     import re as _re
@@ -699,12 +710,14 @@ def test_readme_documents_only_real_cli_flags():
     readme = open(os.path.join(PROJECT_ROOT, "README.md")).read()
     runner = click.testing.CliRunner()
 
+    refresh = _load_script("refresh_universe")
+
     real = set()
-    for module in (fetch_mod, analysis_mod):
+    for module in (fetch_mod, analysis_mod, refresh):
         help_text = runner.invoke(module.main, ["--help"]).output
         real |= set(_re.findall(r"--[a-z][a-z-]+", help_text))
-    # Flags owned by the shell wrappers and the universe CLI.
-    real |= {"--upload", "--allow-stale", "--prune", "--help"}
+    # Flags owned by the shell wrappers.
+    real |= {"--upload", "--allow-stale", "--help"}
     # build_image.sh parses its own flags, so read them out of its case arms
     # rather than listing them here: a flag documented in the README but never
     # handled by the script would otherwise pass this test and fail in use.
