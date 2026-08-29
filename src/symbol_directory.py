@@ -18,6 +18,7 @@ Both are pipe-delimited with a header row and a trailing "File Creation Time"
 line, and both carry an authoritative ETF flag.
 """
 
+import csv
 import io
 import re
 import urllib.request
@@ -187,3 +188,77 @@ def fetch_symbol_directory(
     # A symbol listed in both files keeps its Nasdaq row, which comes first.
     combined = combined.drop_duplicates(subset=["ticker"], keep="first")
     return combined[DIRECTORY_COLUMNS].reset_index(drop=True)
+
+
+# --------------------------------------------------------------- ASX
+
+# The ASX has no equivalent of the Nasdaq Trader files. Its company directory
+# is served as CSV through the research API its website uses; the access token
+# is the public one embedded in that site, not a credential.
+#
+# The directory is *membership*, not classification: it lists every quoted
+# code including ETPs, but says nothing about which are funds. That is why a
+# new ASX code needs a provider lookup before it can enter an ETF universe,
+# and why the ASX refresh is additive-with-a-check rather than a wholesale
+# replacement like the US one.
+ASX_DIRECTORY_URL = (
+    "https://asx.api.markitdigital.com/asx-research/1.0/companies/directory/file"
+    "?access_token=83ff96335c2d45a094df02a206a39ff4"
+)
+
+
+def parse_asx_directory(text: str) -> pd.DataFrame:
+    """Parse the ASX company directory CSV into ticker/name rows.
+
+    Tolerant about the header, because this file has changed shape before: the
+    older static export led with a title block and spelled the columns
+    "Company name,ASX code,GICS industry group", while the research API leads
+    with the code. The header is found by looking for a row naming both a code
+    and a name, whatever the order or wording.
+
+    Raises:
+        ValueError: no header row that names a code and a name.
+    """
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        lowered = line.lower()
+        if "code" in lowered and "name" in lowered:
+            rows = list(csv.DictReader(io.StringIO("\n".join(lines[index:]))))
+            if not rows:
+                raise ValueError("ASX directory: parsed no rows")
+            break
+    else:
+        raise ValueError("ASX directory: no header row naming a code and a name")
+
+    def pick(row, *wanted):
+        for key in row:
+            if key and key.strip().lower() in wanted:
+                return (row[key] or "").strip()
+        return ""
+
+    frame = pd.DataFrame(
+        [
+            {
+                "ticker": pick(row, "asx code", "code", "ticker", "symbol").upper(),
+                "name": pick(row, "company name", "name", "security name"),
+                "exchange": "ASX",
+            }
+            for row in rows
+        ]
+    )
+    frame = frame[frame["ticker"] != ""].drop_duplicates(subset=["ticker"], keep="first")
+    if frame.empty:
+        raise ValueError("ASX directory: parsed no rows")
+    return frame.reset_index(drop=True)
+
+
+def fetch_asx_directory(timeout: int = 60, text: str | None = None) -> pd.DataFrame:
+    """Download the ASX company directory.
+
+    Args:
+        timeout: Request timeout in seconds.
+        text: Pre-fetched CSV content, for tests and for the days the ASX
+            blocks scripted downloads -- the file can be saved by hand and fed
+            in with ``--from-file``.
+    """
+    return parse_asx_directory(text if text is not None else _download(ASX_DIRECTORY_URL, timeout))

@@ -39,7 +39,10 @@ and a universe:
 python src/run.py all --exchange US --instrument-type stocks --period 365
 ```
 
-Jobs are `sync`, `fetch`, `analyze`, `publish`, and `all`. Exit codes are
+Jobs are `fetch`, `analyze`, `publish`, and `all`. There is deliberately no
+universe job: membership is decided before the image is built, by
+`scripts/refresh_universe.py`, and the pipeline only ever reads the committed
+CSV. Exit codes are
 already stable and documented, which the alarm design in §8 depends on:
 
 | Code | Meaning |
@@ -61,7 +64,6 @@ from the Fargate measurements instead.
 
 | Stage | US (5750 tickers) | ASX (402 tickers) |
 |---|---|---|
-| `sync` | 6.2 s, 122 MB peak | 42.9 s, 131 MB peak |
 | `fetch` | 3 m 42 s, **950 MB peak** | 17 s |
 | `analyze` | 5 s, 402 MB peak | 0.3 s |
 | `publish` + upload | ~2 s | ~1 s |
@@ -76,9 +78,11 @@ Artefact sizes:
 | Published database | 884 KB | 48 KB |
 | Container image | 366 MB (shared) | |
 
-The ASX `sync` figure is the one that surprises: ASX has no bulk symbol
-directory, so it does 404 per-ticker provider lookups. It dominates the ASX
-run at 43 s of the ~60 s total.
+These figures predate the removal of the in-run universe sync, which cost 6 s
+on US and 43 s on ASX — the ASX one dominated its ~60 s run, because that
+market has no bulk symbol directory and the job fell back to per-ticker
+provider lookups. Both runs are that much shorter now, and neither touches the
+universe at all.
 
 ### 2.2 The same runs on Fargate
 
@@ -118,23 +122,18 @@ ASX schedule at 07:15 is an independent task that has already finished.
 justifying carefully. Every artefact the pipeline produces is regenerated from
 scratch on each run:
 
-- **US universe** — `sync` rebuilds membership from the NASDAQ symbol
-  directory. A function of the directory, not of the previous run.
-- **ASX universe** — `refresh_universe(prune=True)` reads the universe file,
-  enriches each ticker from the provider, and drops what the provider no longer
-  lists. Starting from the snapshot baked into the image gives the same result
-  as starting from yesterday's output. Verified: the bundled
-  `config/asx_etf.csv` and the live volume copy are both 404 rows and have not
-  diverged.
+- **Universe** — not produced by the run at all. The committed CSV is copied
+  out of the image at the start of every run and read; nothing adds a ticker
+  or removes one. It is therefore trivially a function of the image rather
+  than of the previous run.
 - **EOD prices** — refetched in full every run (`--period 365`).
 - **Databases** — rebuilt from that run's CSVs, then published atomically.
 
 So a container that starts with an empty `/data` produces byte-equivalent
 output to one that starts with last night's volume. **No EFS, no S3 state
-sync, no volume of any kind.** The image is the source of truth for ASX
-membership, which is already true today — new ASX ETFs arrive only by editing
-`config/asx_etf.csv` in the repository, because there is no directory to sync
-from.
+sync, no volume of any kind.** The image is the source of truth for membership
+in both markets: a ticker arrives or leaves by a commit to `config/*.csv` and
+an image build, never by a decision taken inside a run.
 
 The 201 MB EOD CSV lives on Fargate's ephemeral storage (20 GB by default),
 which is ample.
@@ -472,7 +471,6 @@ sequenceDiagram
     Note over C: /data is empty — stateless by design
     C->>C: ensure_universe() copies bundled CSV from image
 
-    C->>Y: sync — symbol directory (US) / per-ticker lookups (ASX)
     Y-->>C: universe membership
     C->>Y: fetch — 365d EOD, batches of 100
     Y-->>C: prices (201 MB US / 14 MB ASX)
@@ -754,7 +752,7 @@ write. Three small items are worth addressing, none blocking:
 
 | # | Item | Severity | Detail |
 |---|---|---|---|
-| 1 | `sync` and `fetch` jobs also upload | ~~Low~~ **Fixed** | The upload block in `run.py` ran for every job, so `sync` alone re-uploaded the *existing* database — one stamped with an earlier run's `run_id` and `data_as_of`. Now gated on `PUBLISHING_JOBS`; `--upload` on a non-publishing job is an error rather than a silent no-op. |
+| 1 | non-publishing jobs also upload | ~~Low~~ **Fixed** | The upload block in `run.py` ran for every job, so a non-publishing job alone re-uploaded the *existing* database — one stamped with an earlier run's `run_id` and `data_as_of`. Now gated on `PUBLISHING_JOBS`; `--upload` on a non-publishing job is an error rather than a silent no-op. |
 | 2 | No `--platform` guard | Low | An arm64 build fails on Fargate x86 at task start with an exec format error. Document in the deploy runbook, or pin `--platform linux/amd64` in a Makefile target. |
 | 3 | `min_success_ratio` default 0.95 | Info | The US fetch reliably loses 1–3 tickers to provider rate limiting (1/5750 on the last three runs). Well inside the threshold, but if the provider degrades, exit 3 is the designed response and the alarm in §8.1 will report it. |
 

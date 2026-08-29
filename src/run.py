@@ -23,44 +23,15 @@ import pipeline
 from analysis import StaleDataError, analyze_stocks
 from config import EXCHANGE_SUFFIXES, INSTRUMENTS, load_config, load_dotenv
 from fetch_prices import PartialFetchError, YahooFinanceDataFetcher, setup_logging
-from symbol_directory import US_EXCHANGES, fetch_symbol_directory
-from universe import default_asset_type_for, refresh_universe, sync_universe
 
 EXIT_OK, EXIT_ERROR, EXIT_STALE, EXIT_PARTIAL = 0, 1, 2, 3
 
 # Jobs that build a database. Only these have anything to upload; the upload
-# is gated on membership so a `sync` or `fetch` cannot republish a database
-# left over from an earlier run.
+# is gated on membership so a `fetch` cannot republish a database left over
+# from an earlier run.
 PUBLISHING_JOBS = ("analyze", "publish", "all")
 
 logger = logging.getLogger(__name__)
-
-
-def _sync(cfg) -> None:
-    """Refresh universe membership, by directory where one exists."""
-    cfg.ensure_universe()
-    if cfg.exchange in US_EXCHANGES:
-        logger.info(f"Syncing {cfg.exchange} universe from the symbol directory")
-        summary = sync_universe(
-            cfg.ticker_file,
-            fetch_symbol_directory(),
-            instrument_type=cfg.instrument_type,
-            exchanges=US_EXCHANGES[cfg.exchange],
-        )
-        logger.info(
-            f"  {summary['total']} symbols (+{len(summary['added'])} "
-            f"-{len(summary['removed'])}, {summary['retained']} retained)"
-        )
-    else:
-        # No bulk directory for this market; enrich in place and drop members
-        # the provider no longer lists.
-        logger.info(f"Enriching {cfg.exchange} universe via provider lookups")
-        refresh_universe(
-            cfg.ticker_file,
-            EXCHANGE_SUFFIXES[cfg.exchange],
-            default_asset_type=default_asset_type_for(cfg.instrument_type),
-            prune=True,
-        )
 
 
 def _fetch(cfg, period: int, batch_size: int, min_ratio: float, allow_partial: bool) -> None:
@@ -86,7 +57,7 @@ def _fetch(cfg, period: int, batch_size: int, min_ratio: float, allow_partial: b
 
 
 @click.command(help="Run one pipeline stage, or the whole thing")
-@click.argument("job", type=click.Choice(["sync", "fetch", "analyze", "publish", "all"]))
+@click.argument("job", type=click.Choice(["fetch", "analyze", "publish", "all"]))
 @click.option("--exchange", required=True, type=click.Choice(list(EXCHANGE_SUFFIXES), False))
 @click.option("--instrument-type", required=True, type=click.Choice(INSTRUMENTS, False))
 # 400, not 365: under return_basis: google_finance a window opens at the last
@@ -119,8 +90,6 @@ def main(
     try:
         cfg = load_config(exchange, instrument_type)
 
-        if job in ("sync", "all"):
-            _sync(cfg)
         if job in ("fetch", "all"):
             _fetch(cfg, period, batch_size, min_success_ratio, allow_partial)
         if job in ("analyze", "all"):
