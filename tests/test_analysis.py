@@ -186,8 +186,8 @@ def history_frame(dates, tickers=("AAA",)):
     )
 
 
-def kept_dates(frame, mode, tail_days=0, return_basis="google_finance"):
-    out = _sample_price_history(frame, mode, tail_days, return_basis)
+def kept_dates(frame, mode, windows=(), return_basis="google_finance"):
+    out = _sample_price_history(frame, mode, windows, return_basis)
     return [d.strftime("%Y-%m-%d") for d in out["stock_price_date"]]
 
 
@@ -291,6 +291,8 @@ def test_daily_tail_covers_the_longest_day_window(windows, expected):
     assert daily_tail_days(windows) == expected
 
 
+SEVEN_DAY = [{"days": 7, "label": "7_days"}]
+
 # Aug 2026: the 18th-21st is Tue-Fri, the 24th-25th the following Mon-Tue.
 SPIKE_WEEK = [
     "2026-08-06",
@@ -319,7 +321,7 @@ def test_weekly_alone_cannot_chart_a_seven_day_window():
 
 def test_daily_tail_keeps_every_session_of_the_short_window():
     """Same frame, same mode: the last 7 days survive intact."""
-    assert kept_dates(history_frame(SPIKE_WEEK), "weekly", tail_days=7) == [
+    assert kept_dates(history_frame(SPIKE_WEEK), "weekly", SEVEN_DAY) == [
         # Older weeks stay thinned -- the tail is not "publish everything".
         "2026-08-07",
         "2026-08-14",
@@ -335,7 +337,7 @@ def test_daily_tail_keeps_every_session_of_the_short_window():
 
 def test_a_session_in_both_the_tail_and_a_period_end_is_kept_once():
     """Friday the 21st closes its week and sits inside the tail."""
-    kept = kept_dates(history_frame(SPIKE_WEEK), "weekly", tail_days=7)
+    kept = kept_dates(history_frame(SPIKE_WEEK), "weekly", SEVEN_DAY)
     assert kept.count("2026-08-21") == 1
 
 
@@ -346,20 +348,66 @@ def test_tail_opens_on_the_session_the_screen_measured_from():
     window opens on the 17th, so that is the first point a chart must carry.
     """
     dates = sorted([d for d in SPIKE_WEEK if d != "2026-08-18"] + ["2026-08-17"])
-    assert "2026-08-17" in kept_dates(history_frame(dates), "weekly", tail_days=7)
+    assert "2026-08-17" in kept_dates(history_frame(dates), "weekly", SEVEN_DAY)
 
 
 def test_robust_basis_opens_the_tail_inside_the_window():
     """The "robust" basis opens after the anchor, and so does its tail."""
     dates = sorted([d for d in SPIKE_WEEK if d != "2026-08-18"] + ["2026-08-17"])
-    kept = kept_dates(history_frame(dates), "weekly", tail_days=7, return_basis="robust")
+    kept = kept_dates(history_frame(dates), "weekly", SEVEN_DAY, return_basis="robust")
     assert "2026-08-17" not in kept
     assert "2026-08-19" in kept
 
 
+# ------------------------------------------------- window opening sessions
+
+
+# A month of sessions ending Fri 28 Aug 2026, thinned to Fridays by weekly
+# sampling. A 1-month window off the 28th opens on the 28th of July -- a
+# Tuesday, which no weekly sample keeps.
+MONTH = [d.strftime("%Y-%m-%d") for d in pd.bdate_range("2026-07-20", "2026-08-28")]
+ONE_MONTH = [{"months": 1, "label": "1_month"}]
+
+
+def test_weekly_alone_starts_a_month_chart_on_the_wrong_day():
+    """SLVM: the chart opened on 31 July, the screen on the 28th."""
+    kept = kept_dates(history_frame(MONTH), "weekly")
+    assert "2026-07-28" not in kept
+    assert "2026-07-31" in kept
+
+
+def test_the_session_a_window_opens_on_survives_sampling():
+    """So the first plotted point is the close the percentage came from."""
+    kept = kept_dates(history_frame(MONTH), "weekly", ONE_MONTH)
+    assert "2026-07-28" in kept
+    # Still sampled either side of it -- this is one extra row, not a switch
+    # to daily.
+    assert "2026-07-29" not in kept
+    assert len(kept) < len(MONTH)
+
+
+def test_each_window_contributes_its_own_opening_session():
+    windows = [{"months": 1, "label": "1_month"}, {"days": 21, "label": "21_days"}]
+    kept = kept_dates(history_frame(MONTH), "weekly", windows)
+    assert "2026-07-28" in kept  # a month before the 28th
+    assert "2026-08-07" in kept  # 21 days before it
+
+
+def test_an_opening_session_that_is_also_a_period_end_is_kept_once():
+    kept = kept_dates(history_frame(MONTH), "weekly", [{"days": 28, "label": "28_days"}])
+    assert kept.count("2026-07-31") == 1
+
+
+def test_a_window_opening_on_a_holiday_keeps_the_session_before_it():
+    """The anchor is a calendar date; the chart needs the session the screen used."""
+    dates = [d for d in MONTH if d != "2026-07-28"]
+    kept = kept_dates(history_frame(dates), "weekly", ONE_MONTH)
+    assert "2026-07-27" in kept
+
+
 def test_no_day_window_leaves_the_series_exactly_as_it_was():
     frame = history_frame(SPIKE_WEEK)
-    assert kept_dates(frame, "weekly", tail_days=0) == kept_dates(frame, "weekly")
+    assert kept_dates(frame, "weekly", []) == kept_dates(frame, "weekly")
 
 
 # ------------------------------------------------------------------ threshold column

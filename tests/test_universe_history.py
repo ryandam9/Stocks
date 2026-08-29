@@ -114,11 +114,15 @@ def test_weekly_sampling_keeps_one_row_a_week_ending_on_the_newest_close(project
 
     dates = [pd.Timestamp(r["stock_price_date"]) for r in read_csv_rows(cfg.universe_history_csv)]
     assert dates == sorted(dates)
-    # One point per ISO week, and the series ends on the newest session.
-    assert len({(d.isocalendar().year, d.isocalendar().week) for d in dates}) == len(dates)
+    # One point per ISO week, apart from the sessions the windows open on:
+    # those survive sampling deliberately, so a chart starts where the screen
+    # did. At most one extra row per configured window.
+    weeks = [(d.isocalendar().year, d.isocalendar().week) for d in dates]
+    windows = len(cfg.analysis.windows)
+    assert len(weeks) - len(set(weeks)) <= windows
     assert dates[-1] == frame["stock_price_date"].max()
     # A year of business days is ~52-53 weeks, never the ~261 daily sessions.
-    assert 50 <= len(dates) <= 54
+    assert 50 <= len(dates) <= 54 + windows
 
 
 def test_trimmed_to_twelve_months_even_though_the_fetch_pulls_400_days(project):

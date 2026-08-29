@@ -62,8 +62,12 @@ def published_db(tmp_path):
     conn.executemany("INSERT INTO asx_etf_growth VALUES ('VAS', ?)", [("2026-03-10",)] * 2)
     conn.execute("CREATE TABLE asx_etf_growth_7_days (ticker TEXT)")
     conn.execute("INSERT INTO asx_etf_growth_7_days VALUES ('VAS')")
-    conn.execute("CREATE TABLE run_metadata (exchange TEXT, instrument_type TEXT)")
-    conn.execute("INSERT INTO run_metadata VALUES ('ASX', 'etf')")
+    # data_as_of is the session the screen ran to. Deliberately older than
+    # the newest row above: on 29 Aug 2026 ten of 450 ASX tickers carried the
+    # 28th and the rest stopped at the 27th, and that is the case the mail has
+    # to say out loud.
+    conn.execute("CREATE TABLE run_metadata (exchange TEXT, instrument_type TEXT, data_as_of TEXT)")
+    conn.execute("INSERT INTO run_metadata VALUES ('ASX', 'etf', '2026-08-24')")
     conn.commit()
     conn.close()
     return path
@@ -259,11 +263,63 @@ def test_both_bodies_list_the_tables_with_counts(published_db):
 
     text = notify.render_text(d)
     assert "ASX_1_YEAR_HISTORY" in text
-    assert "02 Sep 2025 to 25 Aug 2026" in text
+    # To the screen's date, not the newest row -- see the next test.
+    assert "02 Sep 2025 to 24 Aug 2026" in text
 
     body = notify.render_html(d)
     assert "ASX_1_YEAR_HISTORY" in body
-    assert "02 Sep 2025" in body and "25 Aug 2026" in body
+    assert "02 Sep 2025" in body and "24 Aug 2026" in body
+
+
+def test_the_mail_reports_the_screen_date_not_the_newest_row(published_db):
+    """The case that made a live quote look like it disagreed with the app.
+
+    The file holds a 25 Aug row, but the screen ran to the 24th because that
+    is the session every ticker reached. Reporting the 25th would say the
+    database is a day fresher than anything in it was measured to.
+    """
+    d = details(contents=notify.inspect_database(str(published_db)))
+    assert d["prices_to"] == "24 Aug 2026"
+    assert d["newest_row"] == "25 Aug 2026"
+
+    for body in (notify.render_text(d), notify.render_html(d)):
+        assert "24 Aug 2026" in body
+        assert "25 Aug 2026" in body
+        assert "staleness_days" in body
+
+
+def test_no_lag_notice_when_every_ticker_reached_the_screen_date(tmp_path):
+    """The common case: nothing to warn about, so nothing is said."""
+    path = tmp_path / "current.db"
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE hist (ticker TEXT, stock_price_date TEXT)")
+    conn.execute("INSERT INTO hist VALUES ('VAS', '2026-08-28')")
+    conn.execute("CREATE TABLE run_metadata (exchange TEXT, instrument_type TEXT, data_as_of TEXT)")
+    conn.execute("INSERT INTO run_metadata VALUES ('ASX', 'etf', '2026-08-28')")
+    conn.commit()
+    conn.close()
+
+    d = details(contents=notify.inspect_database(str(path)))
+    assert d["newest_row"] == ""
+    assert "staleness_days" not in notify.render_html(d)
+
+
+def test_a_run_metadata_missing_a_column_costs_only_that_field(tmp_path):
+    """The table has gained columns before; a missing one is not fatal."""
+    path = tmp_path / "old.db"
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE hist (ticker TEXT, stock_price_date TEXT)")
+    conn.execute("INSERT INTO hist VALUES ('VAS', '2026-08-28')")
+    conn.execute("CREATE TABLE run_metadata (exchange TEXT, instrument_type TEXT)")
+    conn.execute("INSERT INTO run_metadata VALUES ('ASX', 'etf')")
+    conn.commit()
+    conn.close()
+
+    found = notify.inspect_database(str(path))
+    assert found["universe"] == "ASX ETF"
+    assert "as_of" not in found
+    # Falls back to the newest row, which is all this database knows.
+    assert details(contents=found)["prices_to"] == "28 Aug 2026"
 
 
 def test_a_missing_timestamp_still_produces_a_mail():

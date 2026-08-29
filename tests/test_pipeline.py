@@ -21,16 +21,17 @@ def test_load_csv_applies_declared_types(tmp_path):
     csv_path.write_text(
         header + "\n"
         "AAA,Alpha,NYSE,common_stock,2025-01-01,10.5,2026-01-01,20.25,92.86,25.0,"
-        "251,364,0.997,0.958,1000000,adjusted,2026-01-01,run-1,https://x\n"
+        "251,364,0,0.997,0.958,1000000,adjusted,2026-01-01,run-1,https://x\n"
     )
     conn = sqlite3.connect(":memory:")
     assert load_csv(conn, str(csv_path), "g", GROWTH_SQL) == 1
 
     row = conn.execute(
         "SELECT typeof(pct_change), typeof(observations), typeof(ticker), "
-        "typeof(threshold), pct_change, threshold FROM g"
+        "typeof(threshold), pct_change, threshold, typeof(staleness_days) FROM g"
     ).fetchone()
     assert row[:4] == ("real", "integer", "text", "real")
+    assert row[6] == "integer"
     assert row[4] == pytest.approx(92.86)
     assert row[5] == pytest.approx(25.0)
 

@@ -57,6 +57,12 @@ GROWTH_COLUMN_TYPES = [
     ("threshold", "FLOAT"),
     ("observations", "INTEGER"),
     ("days_covered", "INTEGER"),
+    # How far this ticker's newest print is behind the date the screen ran
+    # to. Usually 0. A 1 means the provider had not published this ticker's
+    # latest session when the fetch ran, and is the reason a figure here can
+    # trail a live quote -- which is worth stating on the row rather than
+    # leaving a reader to infer it from last_date.
+    ("staleness_days", "INTEGER"),
     ("coverage", "FLOAT"),
     ("observation_ratio", "FLOAT"),
     ("median_volume", "FLOAT"),

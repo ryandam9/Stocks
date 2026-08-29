@@ -186,11 +186,30 @@ def inspect_database(path: str) -> dict:
         # reached the analysis manifest has no such table, and letting that
         # raise would lose the table list above with it.
         if "run_metadata" in names:
-            row = conn.execute(
-                "SELECT exchange, instrument_type FROM run_metadata LIMIT 1"
-            ).fetchone()
-            if row and row[0]:
-                found["universe"] = universe_label(row[0], row[1] or "")
+            # Column by column rather than one fixed SELECT. This table has
+            # gained columns before and will again, and a name that is not
+            # there yet must cost the field it fills, not the whole mail.
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(run_metadata)")}
+            wanted = [c for c in ("exchange", "instrument_type", "data_as_of") if c in columns]
+            row = None
+            if wanted:
+                row = conn.execute(
+                    f"SELECT {', '.join(wanted)} FROM run_metadata LIMIT 1"
+                ).fetchone()
+            meta = dict(zip(wanted, row, strict=True)) if row else {}
+
+            if meta.get("exchange"):
+                found["universe"] = universe_label(
+                    meta["exchange"], meta.get("instrument_type") or ""
+                )
+            if meta.get("data_as_of"):
+                # The session the screen actually ran to, which is not always
+                # the newest row in the file: the provider publishes tickers
+                # at different times, so a handful can carry a session the
+                # rest do not have yet.
+                found["as_of"] = _pretty_date(meta["data_as_of"])
+                if dates and max(dates) > meta["data_as_of"]:
+                    found["newest_row"] = _pretty_date(max(dates))
     finally:
         conn.close()
 
@@ -247,7 +266,14 @@ def details_for(event: dict, zone, contents: dict | None = None) -> dict:
         "universe": contents.get("universe", ""),
         "tables": contents.get("tables", []),
         "prices_from": contents.get("first_date", ""),
-        "prices_to": contents.get("last_date", ""),
+        # The screen's own as-of date in preference to the newest row: a
+        # ticker or two running ahead of the rest must not make the whole
+        # database look a day fresher than it screened.
+        "prices_to": contents.get("as_of") or contents.get("last_date", ""),
+        # Set only when they disagree, and then said out loud: a figure here
+        # trailing a live quote by a day is the provider's publishing lag, not
+        # a stale database, and that is not guessable from the outside.
+        "newest_row": contents.get("newest_row", ""),
     }
 
 
@@ -284,6 +310,15 @@ def render_text(d: dict) -> str:
         lines.append(f"Prices     {d['prices_from']} to {d['prices_to']}")
     lines.append(f"Size       {d['size']} ({d['bytes']} bytes)")
 
+    if d["newest_row"]:
+        lines += [
+            "",
+            f"NOTE: prices run to {d['prices_to']}, not {d['newest_row']}. The provider",
+            f"      had not published {d['newest_row']} for most tickers when this ran,",
+            "      so a figure here can trail a live quote by a session. Each row's",
+            "      own last_date and staleness_days say where that ticker stops.",
+        ]
+
     if d["tables"]:
         width = max(len(name) for name, _ in d["tables"])
         lines += ["", "Tables"]
@@ -315,6 +350,23 @@ _TABLE_ROW = (
     "</tr>"
 )
 
+# Amber rather than the card's green: this is the one thing in the mail a
+# reader has to act on, by not trusting a stale-looking comparison.
+_LAG_BLOCK = """<tr><td style="padding:8px 28px 0;">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"
+ style="background:#fff8e6;border-left:3px solid #b7791f;border-radius:4px;">
+<tr><td style="padding:12px 14px;color:#5c4813;font-size:13px;line-height:1.6;">
+<strong style="color:#7a5c12;">Prices run to {as_of}, not {newest}.</strong>
+The provider had not published {newest} for most tickers when this ran, so a
+figure here can trail a live quote by a session. Each row carries its own
+<span style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+font-size:12px;">last_date</span> and
+<span style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+font-size:12px;">staleness_days</span>.
+</td></tr>
+</table>
+</td></tr>"""
+
 _TABLES_BLOCK = """<tr><td style="padding:6px 28px 0;">
 <div style="color:#8a949e;font-size:13px;padding-bottom:2px;">Tables</div>
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
@@ -340,6 +392,10 @@ def render_html(d: dict) -> str:
     # repeating a 30-character URI in a 390px column earns nothing.
     fields.append(("Size", f'{e["size"]} <span style="color:#8a949e;">({e["bytes"]} bytes)</span>'))
     rows = "".join(_ROW.format(label=label, value=value) for label, value in fields)
+
+    lag = ""
+    if d["newest_row"]:
+        lag = _LAG_BLOCK.format(as_of=e["prices_to"], newest=e["newest_row"])
 
     tables = ""
     if d["tables"]:
@@ -400,6 +456,7 @@ is ready to use.</p>
 </table>
 </td></tr>
 
+{lag}
 {tables}
 
 <tr><td style="padding:18px 28px 26px;">
