@@ -223,6 +223,10 @@ def test_lookup_table_names_every_ticker_including_unpriced_ones(project):
         "name",
         "exchange",
         "asset_type",
+        # Published so a chart can be grouped or filtered by who runs the fund
+        # and what it holds, without the app parsing fund titles itself.
+        "issuer",
+        "category",
         "currency",
         "source_date",
     ]

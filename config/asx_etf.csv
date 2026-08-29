@@ -1,463 +1,463 @@
-ticker,name,exchange,asset_type,currency,source_date
-ASAO,abrdn Sustainable Asian Opportunities Active ETF,ASX,etf,,2026-08-28
-AASF,Airlie Australian Share ETF,ASX,etf,,2026-08-22
-XALG,Alphinity Global Equity - Active ETF,ASX,etf,,2026-08-22
-XASG,Alphinity Global Sust Eq - Active ETF,ASX,etf,,2026-08-22
-MIDS,Antipodes Global SMID Active ETF,ASX,etf,,2026-08-22
-AGX1,Antipodes Global Value Active ETF,ASX,etf,,2026-08-28
-BAOR,Aoris International B Managed Fund,ASX,etf,,2026-08-22
-DAOR,Aoris International D Managed Fund Hdg,ASX,etf,,2026-08-22
-ADEF,Apostle Dundas Global Eq Fd D Actv ETF,ASX,etf,,2026-08-22
-XARO,Ardea Real Outcome Bond Complex ETF,ASX,etf,,2026-08-22
-DIVI,Ausbil Active Dividend Income Act ETF,ASX,etf,,2026-08-22
-ASUS,Ausbil Active Sustainable Equity Fund - Active ETF,ASX,etf,,2026-08-28
-GHIF,Ausbil Global Ess Infra Hdg Act ETF,ASX,etf,,2026-08-22
-GSCF,Ausbil Global SmallCap Act ETF,ASX,etf,,2026-08-22
-BSUB,Australian Major Bank Subordinated Debt ETF,ASX,etf,,2026-08-28
-AVTE,Avantis Emerging Markets Equity Actv ETF,ASX,etf,,2026-08-22
-AVNG,Avantis Global Equity Active ETF,ASX,etf,,2026-08-22
-AVSV,Avantis Global Small Cap Value Actv ETF,ASX,etf,,2026-08-22
-GLOB,Barrow Hanley Global Share Active ETF,ASX,etf,,2026-08-22
-B1SM,Bell Global Emerging Coms Cls A Actv ETF,ASX,etf,,2026-08-22
-28BB,Betashares 2028 Fxd Term Corp Bd Act ETF,ASX,etf,,2026-08-22
-29BB,Betashares 2029 Fixed Term Corporate Bond Active ETF,ASX,etf,,2026-08-28
-30BB,Betashares 2030 Fxd Term Corp Bd Act ETF,ASX,etf,,2026-08-22
-31BB,Betashares 2031 Fxd Term Corp Bd Act ETF,ASX,etf,,2026-08-22
-ASIA,BetaShares Asia Technology Tigers ETF,ASX,etf,,2026-08-22
-QPON,BetaShares Aus Bank Sr Fltng Rt Bd ETF,ASX,etf,,2026-08-22
-A200,Betashares Australia 200 ETF,ASX,etf,,2026-08-28
-HBRD,Betashares Australian Crdt Inc Actv ETF,ASX,etf,,2026-08-22
-HVST,Betashares Australian Div Hvstr Act ETF,ASX,etf,,2026-08-22
-ECRD,Betashares Aus Enh Crdt Inc Complex ETF,ASX,etf,,2026-08-22
-BEAR,BetaShares Aus Equities Bear Hedge ETF,ASX,etf,,2026-08-22
-BBOZ,Betashares Aus Eqs Strng Bear Cmpx ETF,ASX,etf,,2026-08-22
-EX20,BetaShares Aus Ex-20 Port Divrs ETF,ASX,etf,,2026-08-22
-MMKT,Betashares Australian Cash Plus Active ETF,ASX,etf,,2026-08-28
-QFN,BetaShares Australian Fincls Sect ETF,ASX,etf,,2026-08-22
-AGVT,BetaShares Australian Government Bd ETF,ASX,etf,,2026-08-22
-AAA,BetaShares Aus High Interest Cash ETF,ASX,etf,,2026-08-22
-CRED,BetaShares Aus Inv Grd Corp Bd ETF,ASX,etf,,2026-08-22
-BHYB,Betashares Aust Mjr Bnk Hyb Idx ETF,ASX,etf,,2026-08-22
-OZBD,Betashares Australian Composite Bond ETF,ASX,etf,,2026-08-28
-MTUM,Betashares Australian Momentum ETF,ASX,etf,,2026-08-22
-AQLT,Betashares Australian Quality ETF,ASX,etf,,2026-08-28
-QRE,BetaShares Australian Res Sect ETF,ASX,etf,,2026-08-22
-SMLL,BetaShares Australian Small Coms Sel ETF,ASX,etf,,2026-08-22
-FAIR,BetaShares Australian Sustnby Ldrs ETF,ASX,etf,,2026-08-22
-YMAX,Betashares AUS Top 20 EqYldMxmsrCmplxETF,ASX,etf,,2026-08-22
-QBTC,Betashares Bitcoin ETF,ASX,etf,,2026-08-22
-COMP,Betashares Bloomberg Ausbond Composite ETF,ASX,etf,,2026-08-28
-ERTH,BetaShares Climate Change Innovation ETF,ASX,etf,,2026-08-22
-CLDD,BetaShares Cloud Computing ETF,ASX,etf,,2026-08-22
-OOO,Betashares Crd Oil Idx Ccy Hdg Cmpx ETF,ASX,etf,,2026-08-22
-CRYP,BetaShares Crypto Innovators ETF,ASX,etf,,2026-08-22
-DHHF,Betashares Diversified All Growth ETF,ASX,etf,,2026-08-28
-DRIV,BetaShares Electric Vhcl & Fut Mblty ETF,ASX,etf,,2026-08-22
-XMET,BetaShares Energy Transition Metals ETF,ASX,etf,,2026-08-22
-QETH,Betashares Ethereum ETF,ASX,etf,,2026-08-22
-AEBD,Betashares Ethical AUS Comps Bd ETF,ASX,etf,,2026-08-22
-DBBF,BetaShares Ethical Diversified Bal ETF,ASX,etf,,2026-08-22
-DGGF,BetaShares Ethical Diversified Gr ETF,ASX,etf,,2026-08-22
-DZZF,BetaShares Ethical Divers High Gr ETF,ASX,etf,,2026-08-22
-HEUR,Betashares Europe Currency Hedged ETF,ASX,etf,,2026-08-22
-H100,Betashares FTSE 100 Currency Hedged ETF,ASX,etf,,2026-08-22
-F100,BetaShares FTSE 100 ETF,ASX,etf,,2026-08-22
-TOLL,BS FTSE Glbl Infras Shrs Ccy Hdg ETF,ASX,etf,,2026-08-22
-QOZ,BetaShares FTSE RAFI Australia 200 ETF,ASX,etf,,2026-08-22
-GEAR,BetaShares Geared AUS Eq Complx ETF,ASX,etf,,2026-08-22
-GGAB,Betashares Geared Lng AUS GovtBdCmplxETF,ASX,etf,,2026-08-22
-GGFD,Betashares Geared Lng USTrsBdCcyHCmpxETF,ASX,etf,,2026-08-22
-BBFD,Betashares Geared Short US Treasury Bond Currency Hedged Complex ETF,ASX,etf,,2026-08-28
-BBAB,Betashares Geared Shrt AUSGovtBdCmplxETF,ASX,etf,,2026-08-22
-GGUS,Betashares Geared US Eq Ccy H Cmplx ETF,ASX,etf,,2026-08-22
-WBND,Betashares Global Aggregate Bd Ccy H ETF,ASX,etf,,2026-08-22
-FOOD,Betashares Global Agltr Coms Ccy Hdg ETF,ASX,etf,,2026-08-22
-BNKS,Betashares Global Banks Currency Hdg ETF,ASX,etf,,2026-08-22
-CFLO,Betashares Global Cash Flow Kings ETF,ASX,etf,,2026-08-22
-HACK,BetaShares Global Cybersecurity ETF,ASX,etf,,2026-08-22
-ARMR,Betashares Global Defence ETF,ASX,etf,,2026-08-22
-FUEL,Betashares Global Engy Cmps Ccy Hgd ETF,ASX,etf,,2026-08-22
-MNRS,Betashares Global Gold Mnrs Ccy Hdg ETF,ASX,etf,,2026-08-22
-GBND,Betashares Global Green Bond Ccy Hdg ETF,ASX,etf,,2026-08-22
-DRUG,Betashares Global Healthcare Ccy Hdg ETF,ASX,etf,,2026-08-22
-GTUM,Betashares Global Momentum ETF,ASX,etf,,2026-08-22
-HQLT,BetaShares Global Quality Ldrs Ccy H ETF,ASX,etf,,2026-08-22
-RBTZ,BetaShares Glb Rbtc & Artfcl Intlgc ETF,ASX,etf,,2026-08-22
-QLTY,Betashares Global Quality Leaders ETF,ASX,etf,,2026-08-28
-ROYL,BetaShares Global Royalties ETF,ASX,etf,,2026-08-22
-HGBL,Betashares Global Shares Ccy Hdg ETF,ASX,etf,,2026-08-22
-BGBL,Betashares Global Shares ETF,ASX,etf,,2026-08-28
-EXUS,Betashares Global Shares Ex US ETF,ASX,etf,,2026-08-22
-HETH,Betashares Global Sustnby Ldrs Ccy H ETF,ASX,etf,,2026-08-22
-ETHI,BetaShares Global Sstnbty Ldrs ETF,ASX,etf,,2026-08-22
-URNM,BetaShares Global Uranium ETF,ASX,etf,,2026-08-22
-QAU,Betashares Gold Bullion Currency H ETF,ASX,etf,,2026-08-22
-IIND,BetaShares India Quality ETF,ASX,etf,,2026-08-22
-UTIP,Betashares Infl-Protd US Trs Bd CcyH ETF,ASX,etf,,2026-08-22
-HCRD,BetaShares Intst RtHdgAUSInvmGrdCrpBdETF,ASX,etf,,2026-08-22
-HJPN,Betashares Japan Currency Hedged ETF,ASX,etf,,2026-08-22
-AUST,Betashares Managed Rsk AUS Shrs Cmpx ETF,ASX,etf,,2026-08-22
-WRLD,Betashares Managed Rsk Glb Shrs Cmpx ETF,ASX,etf,,2026-08-22
-BEMG,Betashares MSCI Em Mkts Complex ETF,ASX,etf,,2026-08-22
-HNDQ,Betashares Nasdaq 100 Currency H ETF,ASX,etf,,2026-08-22
-QNDQ,Betashares Nasdaq 100 Equal Weight ETF,ASX,etf,,2026-08-22
-NDQ,Betashares NASDAQ 100 ETF,ASX,etf,,2026-08-28
-QMAX,Betashares Nasdaq 100 Yld Mxmsr Cmplx ET,ASX,etf,,2026-08-22
-JNDQ,Betashares Nasdaq Next Gen 100 ETF,ASX,etf,,2026-08-22
-HQUS,Betashares S&P 500 Eql Wght Ccy Hgd ETF,ASX,etf,,2026-08-22
-QUS,BetaShares S&P 500 Equal Weight ETF,ASX,etf,,2026-08-22
-UMAX,Betashares S&P 500 YieldMxmsrCmplxETF,ASX,etf,,2026-08-22
-HYLD,Betashares S&P Australian Shrs Hi YldETF,ASX,etf,,2026-08-22
-INCM,Betashares S&P Glb H Div Aristocrats ETF,ASX,etf,,2026-08-22
-ATEC,BetaShares S&P/ASX Australian Tech ETF,ASX,etf,,2026-08-22
-RCKT,Betashares Space Industry ETF,ASX,etf,,2026-08-22
-AUDS,Betashares Strong Australian DllrCmpxETF,ASX,etf,,2026-08-22
-YANK,Betashares Strong US Dollar Complex ETF,ASX,etf,,2026-08-22
-USD,BetaShares US Dollar ETF,ASX,etf,,2026-08-22
-US10,Betashares US Trs Bd 7-10 Year Ccy H ETF,ASX,etf,,2026-08-22
-BBUS,Betashares US Eq Strng Bear CcyHCmplxETF,ASX,etf,,2026-08-22
-GGOV,BetaShares US Trs Bd 20+Yr Ccy H ETF,ASX,etf,,2026-08-22
-GAME,BetaShares Video Games and Esports ETF,ASX,etf,,2026-08-22
-GHHF,Betashares Wealthbuilder All Gr Geared Complex ETF,ASX,etf,,2026-08-28
-G200,BetasharesWthBdrAUS200Grd30-40%LVRCpxETF,ASX,etf,,2026-08-22
-GGBL,BetasharesWBldrGlbShrsGrd30-40%LVRCpxETF,ASX,etf,,2026-08-22
-GNDQ,BetasharesWthBdrNdq100Grd30-40%LVRCpxETF,ASX,etf,,2026-08-22
-BNDS,BetaShares Western Asset Aus Bd Actv ETF,ASX,etf,,2026-08-22
-GSUS,Candriam Sustainable Global Eq Act ETF,ASX,etf,,2026-08-22
-CGHE,Claremont Global ETF (hedged),ASX,etf,,2026-08-22
-CGUN,Claremont Global ETF,ASX,etf,,2026-08-22
-CIIH,ClearBridge Glbl Infras Inc H Active ETF,ASX,etf,,2026-08-22
-CUIV,ClearBridge Global Infras Val Active ETF,ASX,etf,,2026-08-22
-CIVH,ClearBridge Glbl Infras Val H Active ETF,ASX,etf,,2026-08-22
-R3AL,ClearBridge Real Income Active ETF,ASX,etf,,2026-08-22
-CIEM,Colchester Emerging Markets Bond Complex ETF,ASX,etf,,2026-08-28
-GFXD,Coolabah Active Global Bond Complex ETF,ASX,etf,,2026-08-28
-DCOR,Daintree Core Income Trust Active ETF,ASX,etf,,2026-08-22
-BTXX,DigitalX Bitcoin ETF,ASX,etf,,2026-08-22
-DACE,Dimensional AUS Cor Eq Tr - Active ETF,ASX,etf,,2026-08-22
-DAVA,Dimensional Australian Value Active ETF,ASX,etf,,2026-08-22
-DFGH,Dimensional Gbl Core Eq Hdg Active ETF,ASX,etf,,2026-08-22
-DGCE,Dimsnl Glbl Cor Eq Tr (UnH Cl)-Actv ETF,ASX,etf,,2026-08-22
-DGSM,Dimensional Gbl Small Comp Active ETF,ASX,etf,,2026-08-22
-DGVA,Dimensional Global Value Active ETF,ASX,etf,,2026-08-22
-EAFZ,Ellerston Asia Growth Fund Complex ETF,ASX,etf,,2026-08-22
-VOLT,ETFS Global Lithium Miners ETF,ASX,etf,,2026-08-22
-CPPR,ETFS Global Pure Play Copper Miners ETF,ASX,etf,,2026-08-22
-HUGE,ETFS Magnificent 7+ ETF,ASX,etf,,2026-08-22
-BEST,ETFS US Quality ETF,ASX,etf,,2026-08-22
-WWWW,ETFS US Technology ETF,ASX,etf,,2026-08-22
-FASI,Fidelity Asia Active ETF,ASX,etf,,2026-08-22
-FHCO,Fidelity Australian High Convct Act ETF,ASX,etf,,2026-08-22
-FEMX,Fidelity Global Emerging Markets ETF,ASX,etf,,2026-08-22
-FCAP,Fidelity Global Future Leaders Actv ETF,ASX,etf,,2026-08-22
-FIIN,Fidelity India Active ETF,ASX,etf,,2026-08-22
-FIRE,Firetrail Alpha Plus Fund Complex ETF,ASX,etf,,2026-08-22
-FSML,Firetrail Australian Small Comp Act ETF,ASX,etf,,2026-08-22
-S3GO,Firetrail S3 Global Opports - Active ETF,ASX,etf,,2026-08-22
-FSCF,First Sentier Active Cash Fund Active ETF,ASX,etf,,2026-08-28
-XX20,First Sentier ex-20 Aus Share Fd Act ETF,ASX,etf,,2026-08-22
-LEVR,First Sentier Geared AUS Shr cmplx ETF,ASX,etf,,2026-08-22
-FRAR,Franklin Australian Absolute Ret Bd AETF,ASX,etf,,2026-08-22
-FRGG,Franklin Global Growth A ETF,ASX,etf,,2026-08-22
-FGSE,Franklin Global Systematic Equity FD - Active ETF,ASX,etf,,2026-08-28
-GCQF,GCQ Global Equities Complex ETF,ASX,etf,,2026-08-28
-HGCQ,GCQ Global Equities Hedged Complex ETF,ASX,etf,,2026-08-22
-GXAI,Global X Artificial Intelligence ETF,ASX,etf,,2026-08-22
-AINF,Global X Artificial Intllgnc Infras ETF,ASX,etf,,2026-08-22
-A300,Global X Australia 300 ETF,ASX,etf,,2026-08-22
-OZXX,Global X Australia ex Fincls & Res ETF,ASX,etf,,2026-08-22
-BANK,Global X Australian Bank Credit ETF,ASX,etf,,2026-08-22
-ACDC,Global X Battery Tech & Lithium ETF,ASX,etf,,2026-08-22
-BCOM,Global X Bloomberg Commodity Complex ETF,ASX,etf,,2026-08-22
-DRGN,Global X China Tech ETF,ASX,etf,,2026-08-22
-WIRE,Global X Copper Miners ETF AUD Inc,ASX,etf,,2026-08-22
-BUGG,Global X Cybersecurity ETF,ASX,etf,,2026-08-22
-DTEC,Global X Defence Tech ETF,ASX,etf,,2026-08-22
-ESTX,Global X EURO STOXX 50® ETF,ASX,etf,,2026-08-22
-FHNG,Global X FANG+ Currency Hedged ETF,ASX,etf,,2026-08-22
-FANG,Global X FANG+ ETF,ASX,etf,,2026-08-22
-GHLD,Global X Gold Bullion (Hedged) ETF,ASX,etf,,2026-08-22
-GXLD,Global X Gold Bullion ETF,ASX,etf,,2026-08-22
-GMTL,Global X Green Metal Miners ETF,ASX,etf,,2026-08-22
-HMND,Global X Humanoid Robotics ETF,ASX,etf,,2026-08-22
-HGEN,Global X Hydrogen ETF,ASX,etf,,2026-08-22
-NDIA,Global X India Nifty 50 ETF,ASX,etf,,2026-08-22
-J100,Global X Japan TOPIX 100 ETF,ASX,etf,,2026-08-22
-TECH,Global X Morningstar Global Tech ETF,ASX,etf,,2026-08-22
-ISMD,Global X MSCI International Small and Mid Cap ETF,ASX,etf,,2026-08-28
-QYLD,Global X Nasdaq 100 Covered Call ETF,ASX,etf,,2026-08-22
-GOLD,Global X Physical Gold Structured,ASX,etf,,2026-08-22
-ETPMAG,Global X Physical Silver Structured,YHD,etf,,2026-08-22
-ROBO,Global X ROBO Glbl Rbtc & Atmtn ETF,ASX,etf,,2026-08-22
-RSSL,Global X Russell 2000 ETF,ASX,etf,,2026-08-22
-UYLD,Global X S&P 500 Covered Call ETF,ASX,etf,,2026-08-22
-ZYUS,Global X S&P 500 Hi Yld Low Vol ETF,ASX,etf,,2026-08-22
-GRPA,Global X S&P Australia GARP ETF,ASX,etf,,2026-08-28
-CURE,Global X S&P Biotech ETF,ASX,etf,,2026-08-22
-GHRP,Global X S&P World ex Aus GARP (H) ETF,ASX,etf,,2026-08-22
-GARP,Global X S&P World ex Australia GARP ETF,ASX,etf,,2026-08-22
-AYLD,Global X S&P/ASX 200 Covered Call ETF,ASX,etf,,2026-08-22
-ZYAU,Global X S&P/ASX 200 High Dividend ETF,ASX,etf,,2026-08-22
-SEMI,Global X Semiconductor ETF,ASX,etf,,2026-08-22
-SLVM,Global X Silver Miners ETF,ASX,etf,,2026-08-22
-MOON,Global X Space Tech ETF,ASX,etf,,2026-08-28
-LNAS,Global X Ultra Long Nasdaq 100ComplexETF,ASX,etf,,2026-08-22
-SNAS,Global X Ultra Short Nasdaq100ComplexETF,ASX,etf,,2026-08-22
-ATOM,Global X Uranium ETF,ASX,etf,,2026-08-22
-U100,Global X US 100 ETF,ASX,etf,,2026-08-22
-PAVE,Global X US Infrastructure Dev ETF,ASX,etf,,2026-08-22
-USTB,Global X US Treasury Bond (Ccy Hdg) ETF,ASX,etf,,2026-08-22
-USIG,Global X USD Corporate Bd (Ccy Hdg) ETF,ASX,etf,,2026-08-22
-USHY,Global X USD High Yld Bond (Ccy Hdg) ETF,ASX,etf,,2026-08-22
-ISLM,Hejaz Equities ETF,ASX,etf,,2026-08-22
-HJHI,HEJAZ High Income Active ETF,ASX,etf,,2026-08-22
-SKUK,Hejaz Sukuk Active ETF A,ASX,etf,,2026-08-22
-HYGG,Hyperion Global Gr Coms Active ETF,ASX,etf,,2026-08-22
-IIGF,Intelligent Investor Aust Eq Gr ETF,ASX,etf,,2026-08-22
-INIF,Intelligent Investor AUS Eq Inc ETF,ASX,etf,,2026-08-22
-INES,Intelligent Investor Ethical Share ETF,ASX,etf,,2026-08-22
-IISV,Intelligent Investor Select Val Shr ETF,ASX,etf,,2026-08-22
-IMLC,Investors Mutual Concentrated Australian Share Fund - Active ETF,ASX,etf,,2026-08-28
-EQIN,Investors Mutual Equity Income Fund - Complex ETF,ASX,etf,,2026-08-28
-ALTB,iShares 15+ Year Australian Gov Bd ETF,ASX,etf,,2026-08-22
-ULTB,iShares 20+ Year US Treasury Bd AUDH ETF,ASX,etf,,2026-08-22
-IAA,iShares Asia 50 ETF (AU),ASX,etf,,2026-08-22
-IBAL,iShares Balanced ESG ETF,ASX,etf,,2026-08-22
-IBIT,iShares Bitcoin ETF,ASX,etf,,2026-08-22
-IZZ,iShares China Large-Cap ETF (AU),ASX,etf,,2026-08-22
-BILL,iShares Core Cash ETF,ASX,etf,,2026-08-22
-IAF,iShares Core Composite Bond ETF,ASX,etf,,2026-08-22
-ICOR,iShares Core Corporate Bond ETF,ASX,etf,,2026-08-22
-GLIN,iShares Core FTSE Global Infras AUDH ETF,ASX,etf,,2026-08-22
-GLPR,iShares Core FTSE Glb Prpty ExAusAUDHETF,ASX,etf,,2026-08-22
-AGGG,iShares Core Global Aggt Bond AUD H ETF,ASX,etf,,2026-08-22
-IHCB,iShares Core Global Corp Bd AUDH ETF,ASX,etf,,2026-08-22
-IESG,iShares Core MSCI Australia ESG ETF,ASX,etf,,2026-08-22
-IHWL,iShares Core MSCI Wld ex Aus ESG AUHDETF,ASX,etf,,2026-08-22
-IWLD,iShares Core MSCI Wld Ex Aus ESG ETF,ASX,etf,,2026-08-22
-IOZ,iShares Core S&P/ASX 200 ETF,ASX,etf,,2026-08-22
-ICME,iShares Credit Income Active ETF,ASX,etf,,2026-08-28
-MVOL,iShares Edge MSCI Australia Mini Vol ETF,ASX,etf,,2026-08-22
-AUMF,iShares Edge MSCI Australia Mltfctr ETF,ASX,etf,,2026-08-22
-ISEC,iShares Enhanced Cash ETF,ASX,etf,,2026-08-22
-IEU,iShares Europe ETF (AU),ASX,etf,,2026-08-22
-IHOO,iShares Global 100 AUD Hedged ETF,ASX,etf,,2026-08-22
-IOO,iShares Global 100 ETF (AU),ASX,etf,,2026-08-22
-AESG,iShares Global Aggregate Bd ESG AUDH ETF,ASX,etf,,2026-08-22
-IXI,iShares Global Consumer Staples ETF (AU),ASX,etf,,2026-08-22
-IXJ,iShares Global Healthcare ETF (AU),ASX,etf,,2026-08-22
-IHHY,iShares Global High Yield Bond AUDH ETF,ASX,etf,,2026-08-22
-ILB,iShares Government Inflation ETF,ASX,etf,,2026-08-22
-IGRO,iShares High Growth ESG ETF,ASX,etf,,2026-08-22
-IHEB,iShares JP Morgan USD EmMkts Bd AUDH ETF,ASX,etf,,2026-08-22
-IVE,iShares MSCI EAFE ETF (AU),ASX,etf,,2026-08-22
-IEM,iShares MSCI Emerging Markets ETF (AU),ASX,etf,,2026-08-22
-EMXC,iShares MSCI Emerging Mkts ex China ETF,ASX,etf,,2026-08-22
-IJP,iShares MSCI Japan ETF (AU),ASX,etf,,2026-08-22
-IKO,iShares MSCI South Korea ETF (AU),ASX,etf,,2026-08-22
-WVOL,iShares MSCI World ex Aus Min Vol ETF,ASX,etf,,2026-08-22
-ITEK,iShares Nasdaq Top 30 ETF,ASX,etf,,2026-08-22
-GLDN,iShares Physical Gold ETF,ASX,etf,,2026-08-22
-IHVV,iShares S&P 500 AUD Hedged ETF,ASX,etf,,2026-08-22
-IVV,iShares S&P 500 ETF,ASX,etf,,2026-08-22
-IJH,iShares S&P Mid-Cap ETF,ASX,etf,,2026-08-22
-IJR,iShares S&P Small-Cap ETF,ASX,etf,,2026-08-22
-ILC,iShares S&P/ASX 20 ETF,ASX,etf,,2026-08-22
-IHD,iShares S&P/ASX Div Opps ESG Scrnd ETF,ASX,etf,,2026-08-22
-ISO,iShares S&P/ASX Small Ordinaries ETF,ASX,etf,,2026-08-22
-IGB,iShares Treasury ETF,ASX,etf,,2026-08-22
-IACT,iShares U.S. Factor Rotation Active ETF,ASX,etf,,2026-08-22
-IUSG,iShares U.S. Treasury Bond AUDH ETF,ASX,etf,,2026-08-22
-WDMF,iShares World Equity Factor ETF,ASX,etf,,2026-08-22
-WYNC,iShares World Equity High Income Complex ETF,ASX,etf,,2026-08-28
-IYLD,iShares Yield Plus ETF,ASX,etf,,2026-08-22
-FUTR,Janus Henderson Global Sustainable Active ETF,ASX,etf,,2026-08-28
-GOOD,Janus Henderson Sustainable Credit Active ETF,ASX,etf,,2026-08-28
-T3MP,JPMorgan Climate Change Solution Act ETF,ASX,etf,,2026-08-22
-JEME,JPMorgan EM Mkts Rsrh Enh Idx Eq Act ETF,ASX,etf,,2026-08-22
-JEPI,JPMorgan Equity Premium Income ActiveETF,ASX,etf,,2026-08-22
-JHPI,JPMorgan Equity PremiumIncome(Hdg)ActETF,ASX,etf,,2026-08-22
-JEGA,JPMorgan Global Eq Prm Inc Cmplx ETF,ASX,etf,,2026-08-22
-JHGA,JPMorgan Global Eq Prm Inc (H) Cmplx ETF,ASX,etf,,2026-08-22
-JREG,JPMorgan Global Rsrch Enh Eqt Actv ETF,ASX,etf,,2026-08-22
-JRHG,JPMorgan Global Rsrch Enh Eq H Actv ETF,ASX,etf,,2026-08-22
-JGLO,JPMorgan Global Select Equity Active ETF,ASX,etf,,2026-08-22
-JHLO,JPMorgan Global Select Eq (Hdg) Act ETF,ASX,etf,,2026-08-22
-JPEQ,JPMorgan US 100Q Eq Prm Inc Act ETF,ASX,etf,,2026-08-22
-JPHQ,JPMorgan US 100Q EquityPrmInc(Hdg)ActETF,ASX,etf,,2026-08-22
-L1HI,L1 Capital International (Hedged) Active ETF,ASX,etf,,2026-08-28
-L1IF,L1 Capital International ETF,ASX,etf,,2026-08-22
-LHGG,Lakehouse Global Growth Active ETF,ASX,etf,,2026-08-22
-LNYN,Lanyon Investment Active ETF,ASX,etf,,2026-08-22
-ROAR,Lion Active ETF,ASX,etf,,2026-08-28
-LPGD,Loftus Peak Global Disruption Mgd Fd ETF,ASX,etf,,2026-08-22
-LPHD,Loftus Peak Global Disruption H Act ETF,ASX,etf,,2026-08-22
-LSGE,Loomis Sayles Global Equity Fund - Active ETF,ASX,etf,,2026-08-28
-MQAE,Macquarie Core Australian Equity Active ETF,ASX,etf,,2026-08-28
-MQHG,Macquarie Core Global Equity (Hedged) Active ETF,ASX,etf,,2026-08-28
-MQEG,Macquarie Core Global Equity Active ETF,ASX,etf,,2026-08-28
-MQDB,Macquarie Dynamic Bond Active ETF,ASX,etf,,2026-08-28
-MQXS,Macquarie Global Small Companies Active ETF,ASX,etf,,2026-08-28
-MQYM,Macquarie Global Yield Maximiser Active ETF,ASX,etf,,2026-08-28
-MQIO,Macquarie Income Opportunities Active ETF,ASX,etf,,2026-08-28
-MQSD,Macquarie Subordinated Debt Active ETF,ASX,etf,,2026-08-28
-MQWS,Macquarie Walter Scott Global Equity Active ETF,ASX,etf,,2026-08-28
-MGOC,Magellan Global Open Units Active ETF,UNKNOWN,unit,,2026-08-22
-OPPT,Magellan Global Opportunities Active ETF,ASX,etf,,2026-08-22
-MICH,Magellan Infrastructure Ccy Hdg Act ETF,ASX,etf,,2026-08-22
-MFOA,Milford Australian Absolute Growth Complex ETF,ASX,etf,,2026-08-28
-MKAX,Montaka Global Extension ETF,ASX,etf,,2026-08-22
-MOGL,Montaka Global Long Only Equities ETF,ASX,etf,,2026-08-22
-MSTR,Morningstar International Shrs Actv ETF,ASX,etf,,2026-08-22
-MCCL,Munro Climate Change Leaders Fund Active ETF,ASX,etf,,2026-08-28
-MCGG,Munro Concentrated Global Growth Active ETF,ASX,etf,,2026-08-28
-MAET,Munro Global Growth Fund Complex ETF,ASX,etf,,2026-08-28
-BDCI,Muzinich BDC Income Fund - Active ETF,ASX,etf,,2026-08-28
-NNWH,Nanuk New World (Currency Hedged) ActETF,ASX,etf,,2026-08-22
-NNUK,Nanuk New World ETF,ASX,etf,,2026-08-22
-IMPQ,Perennial Better Future Fund,ASX,etf,,2026-08-22
-EIGA,Perennial Income Generator Fund,ASX,etf,,2026-08-22
-DIFF,Perpetual Diversified Income Active ETF,ASX,etf,,2026-08-22
-GIVE,Perpetual ESG Australian Share ActiveETF,ASX,etf,,2026-08-22
-PMGOLD,Perth Mint Gold,ASX,etf,,2026-08-28
-EARN,PIMCO Short Term Active Yield Active ETF,ASX,etf,,2026-08-28
-PAXX,Platinum Asia ETF,ASX,etf,,2026-08-22
-PIXX,Platinum International ETF,ASX,etf,,2026-08-22
-PGA1,Plato Global Alpha Fund Complex ETF,ASX,etf,,2026-08-28
-PGI2,Plato Global Shares Income Active ETF,ASX,etf,,2026-08-22
-QGFH,Quay Global Real Estate AUD Act ETF,ASX,etf,,2026-08-22
-QGRU,Quay Global Real Estate UH Act ETF,ASX,etf,,2026-08-22
-RIIF,Resolution Cap Glb Lstd Infras Act ETF,ASX,etf,,2026-08-22
-RCAP,Resolution Capital Global PrptySecActETF,ASX,etf,,2026-08-22
-RGB,Russell Inv Australian Government Bd ETF,ASX,etf,,2026-08-22
-RARI,Russell Inv Australian Rspnb Inv ETF,ASX,etf,,2026-08-22
-RCB,Russell Inv Australian Select CorpBd ETF,ASX,etf,,2026-08-22
-RSM,Russell Inv Australian Semi-Govt Bd ETF,ASX,etf,,2026-08-22
-RDV,Russell Inv High Dividend Aus Shrs ETF,ASX,etf,,2026-08-22
-RGOS,Russell Inv Sust Global Opps Complex ETF,ASX,etf,,2026-08-22
-SVNP,Savana US Small Caps Active ETF,ASX,etf,,2026-08-28
-CORE,Schroder Global Core Fund Active ETF,ASX,etf,,2026-08-22
-ALPH,Schroder Global Equity Alpha Active ETF,ASX,etf,,2026-08-22
-GROW,Schroder Real Return Active ETF,ASX,etf,,2026-08-22
-SFIF,Seed Financial Income Fund Active ETF,ASX,etf,,2026-08-28
-APA,Smart Asia Pacific ETF,ASX,etf,,2026-08-22
-AUE,Smart Australian ESG ET,ASX,etf,,2026-08-22
-ASP,Smart Australian Property ETF,ASX,etf,,2026-08-22
-BOT,Smart Automation and Robotics ETF,ASX,etf,,2026-08-22
-BTC,Smart Bitcoin ETF,ASX,etf,,2026-08-22
-INF,Smart Global Infrastructure ETF,ASX,etf,,2026-08-22
-GPR,Smart Global Property ETF,ASX,etf,,2026-08-22
-USM,Smart US Mid Cap ETF,ASX,etf,,2026-08-22
-SPHX,Spheria Australian Smaller Companies Fund - Active ETF,ASX,etf,,2026-08-28
-SPY,Stt Strt SPDR S&P 500 ETF,ASX,etf,,2026-08-22
-DJRE,Stt StrtSPDRDowJonesGlblRlEsttESGTltdETF,ASX,etf,,2026-08-22
-SYI,Stt Strt SPDR MSCI Aus Sel Hi Div YldETF,ASX,etf,,2026-08-22
-QMIX,Stt Strt SPDR MSCI World Quality Mix ETF,ASX,etf,,2026-08-22
-WEMG,Stt Strt SPDR S&P EM Crb Aware ETF,ASX,etf,,2026-08-22
-WDIV,Stt Strt SPDR S&P Global Dividend ETF,ASX,etf,,2026-08-22
-WXOZ,Stt Strt SPDR S&P World ex AusCrbAwrETF,ASX,etf,,2026-08-22
-WXHG,Stt Strt SPDR S&P World ex AusCbAwrHETF,ASX,etf,,2026-08-22
-E200,Stt Strt SPDR S&P/ASX 200 ESG ETF,ASX,etf,,2026-08-22
-STW,Stt Strt SPDR S&P/ASX 200 ETF,ASX,etf,,2026-08-22
-OZF,Stt Strt SPDRS&P/ASX200FinclsEX-AREITETF,ASX,etf,,2026-08-22
-SLF,Stt Strt SPDR S&P/ASX 200 Lstd Prpty ETF,ASX,etf,,2026-08-22
-OZR,Stt Strt SPDR S&P/ASX 200 Resources ETF,ASX,etf,,2026-08-22
-SFY,Stt Strt SPDR S&P/ASX 50 ETF,ASX,etf,,2026-08-22
-BOND,Stt Strt SPDR S&P/ASX iBoxx Aus Bd ETF,ASX,etf,,2026-08-22
-GOVT,Stt Strt SPDRS&P/ASXiBoxxAusGovtBdETF,ASX,etf,,2026-08-22
-SSO,Stt Strt SPDR S&P/ASX Small Ordnrs ETF,ASX,etf,,2026-08-22
-SWTZ,Switzer Dividend Growth ETF-Active ETF,ASX,etf,,2026-08-22
-TCAP,Ten Cap Alpha Plus Complex ETF,ASX,etf,,2026-08-28
-TBIL,VanEck 1-3 Month US Treasury Bond ETF,ASX,etf,,2026-08-22
-1GOV,VanEck 1-5 Year Australian Govt Bd ETF,ASX,etf,,2026-08-22
-XGOV,VanEck 10+ Year Australian Govt Bd ETF,ASX,etf,,2026-08-22
-5GOV,VanEck 5-10 Year Australian Govt Bd ETF,ASX,etf,,2026-08-22
-MVB,VanEck Australian Banks ETF,ASX,etf,,2026-08-22
-PLUS,VanEck Australian Corp Bd+ ETF,ASX,etf,,2026-08-22
-MVW,VanEck Australian Equal Wt ETF,ASX,etf,,2026-08-22
-FSUB,VanEck Australian Fixed Rate Sub Dbt ETF,ASX,etf,,2026-08-22
-FLOT,VanEck Australian Fltng Rt ETF,ASX,etf,,2026-08-22
-ALFA,VanEck Australian Long Short Complex ETF,ASX,etf,,2026-08-22
-MVA,VanEck Australian Property ETF,ASX,etf,,2026-08-22
-MVR,VanEck Australian Resources ETF,ASX,etf,,2026-08-22
-RMBS,VanEck Australian RMBS ETF,ASX,etf,,2026-08-22
-SUBD,VanEck Australian Sbdntd Dbt ETF,ASX,etf,,2026-08-22
-GCAP,VanEck Bentham Global Cap Secs Actv ETF,ASX,etf,,2026-08-22
-VBTC,VanEck Bitcoin ETF,ASX,etf,,2026-08-22
-MONY,VanEck Cash Plus Active ETF,ASX,etf,,2026-08-22
-CNEW,VanEck China New Economy ETF,ASX,etf,,2026-08-22
-VBAL,VanEck Core+ Diversified Balanced Active ETF,ASX,etf,,2026-08-28
-VGRO,VanEck Core+ Diversified Growth Act ETF,ASX,etf,,2026-08-22
-VHGR,VanEck Core+ Diversified High Gr Act ETF,ASX,etf,,2026-08-22
-EBND,VanEck Emerging Income Opps Actv ETF,ASX,etf,,2026-08-22
-CETF,VanEck FTSE China A50 ETF,ASX,etf,,2026-08-22
-IFRA,VanEck FTSE Glbl Infras(AUD Hdg)ETF,ASX,etf,,2026-08-22
-REIT,VanEck FTSE Intl Prop (AUD Hdg) ETF,ASX,etf,,2026-08-22
-GMVW,VanEck Geared Australian Equal Weight H,ASX,etf,,2026-08-22
-CLNE,VanEck Global Clean Energy ETF,ASX,etf,,2026-08-22
-DFND,VanEck Global Defence ETF,ASX,etf,,2026-08-22
-HLTH,VanEck Global Hlthcr Ldrs ETF,ASX,etf,,2026-08-22
-LEND,VanEck Global Listed Priv Crdt AUD H ETF,ASX,etf,,2026-08-22
-GPEQ,VanEck Global Listed Private Equity ETF,ASX,etf,,2026-08-22
-NUGG,VanEck Gold Bullion ETF,ASX,etf,,2026-08-22
-GDX,VanEck Gold Miners ETF,ASX,etf,,2026-08-22
-GRIN,VanEck India Growth Leaders ETF,ASX,etf,,2026-08-22
-GOAT,VanEck Morningstar Intl Wide Moat ETF,ASX,etf,,2026-08-22
-MHOT,VanEck Morningstar Wide Moat (AUD H) ETF,ASX,etf,,2026-08-22
-MOAT,VanEck Morningstar Wide Moat ETF,ASX,etf,,2026-08-22
-GRNV,VanEck MSCI AUS Sust Eq ETF,ASX,etf,,2026-08-22
-AQTY,VanEck MSCI Australian Quality Plus ETF,ASX,etf,,2026-08-28
-GWTH,VanEck MSCI Intl Growth ETF,ASX,etf,,2026-08-22
-QHAL,VanEck MSCI Intl Quality (AUD Hdg) ETF,ASX,etf,,2026-08-22
-QUAL,Vaneck Msci International Quality Etf,ASX,etf,,2026-08-22
-QHSM,VanEck MSCI Intl Sm Com Qual (AUD H) ETF,ASX,etf,,2026-08-22
-QSML,VanEck MSCI Intl Sm Com Qual ETF,ASX,etf,,2026-08-22
-ESGI,VanEck MSCI Intl Sust Eq ETF,ASX,etf,,2026-08-22
-HVLU,VanEck MSCI Intl Val (AUD H) ETF,ASX,etf,,2026-08-22
-VLUE,VanEck MSCI Intl Val ETF,ASX,etf,,2026-08-22
-EMKT,VanEck MSCI Mltfac EmMkts Eq ETF,ASX,etf,,2026-08-22
-MVE,VanEck S&P/ASX MidCap ETF,ASX,etf,,2026-08-22
-MVS,VanEck Small Coms Masters ETF,ASX,etf,,2026-08-22
-URAN,VanEck Uranium and Energy Innovation ETF,ASX,etf,,2026-08-22
-ESPO,VanEck Video Gaming & eSprts ETF,ASX,etf,,2026-08-22
-VEU,Vanguard All-World ex-US Shares ETF,ASX,etf,,2026-08-22
-VACF,Vanguard Australian Corp Fxd Intr ETF,ASX,etf,,2026-08-22
-VAF,Vanguard Australian Fixed Interest ETF,ASX,etf,,2026-08-22
-VGB,Vanguard Australian Government Bond ETF,ASX,etf,,2026-08-22
-VAP,Vanguard Australian Property Secs ETF,ASX,etf,,2026-08-22
-VHY,Vanguard Australian Shares High Yld ETF,ASX,etf,,2026-08-22
-VAS,Vanguard Australian Shares ETF,ASX,etf,,2026-08-22
-VDAL,Vanguard Diversified All Growth Idx ETF,ASX,etf,,2026-08-22
-VDBA,Vanguard Diversified Balanced ETF,ASX,etf,,2026-08-22
-VDCO,Vanguard Diversified Conservative ETF,ASX,etf,,2026-08-22
-VDGR,Vanguard Diversified Growth ETF,ASX,etf,,2026-08-22
-VDHG,Vanguard Diversified High Growth ETF,ASX,etf,,2026-08-22
-VDIF,Vanguard Diversified Income ETF,ASX,etf,,2026-08-22
-VETH,Vanguard Ethically Cnscs Aust Shrs ETF,ASX,etf,,2026-08-22
-VEFI,Vanguard Etclly Cons Gbl Aggt Bd H ETF,ASX,etf,,2026-08-22
-VESG,Vanguard Etclly Cons Intl Shrs ETF,ASX,etf,,2026-08-22
-VAE,Vanguard FTSE Asia ex Japan Shrs ETF,ASX,etf,,2026-08-22
-VGE,Vanguard FTSE Emerging Markets Shrs ETF,ASX,etf,,2026-08-22
-VEQ,Vanguard FTSE Europe Shares ETF,ASX,etf,,2026-08-22
-VBND,Vanguard Global Aggregate Bd Hdg ETF,ASX,etf,,2026-08-22
-VBLD,Vanguard Global Infrastructure ETF,ASX,etf,,2026-08-22
-VMIN,Vanguard Global Minimum Volatility ETF,ASX,etf,,2026-08-22
-VTEK,Vanguard Global Technology Index ETF,ASX,etf,,2026-08-22
-VTKH,Vanguard Global Technology Index (H) ETF,ASX,etf,,2026-08-22
-VVLU,Vanguard Global Value Equity Active ETF,ASX,etf,,2026-08-22
-VCF,Vanguard Intl Credit Secs (Hdg) ETF,ASX,etf,,2026-08-22
-VIF,Vanguard Intl Fxd Intr (Hdg) ETF,ASX,etf,,2026-08-22
-VIHY,Vanguard InternationalSharesHighYieldETF,ASX,etf,,2026-08-22
-VLC,Vanguard MSCI Australian Large Coms ETF,ASX,etf,,2026-08-22
-VSO,Vanguard MSCI Australian Small Coms ETF,ASX,etf,,2026-08-22
-VGS,Vanguard MSCI Intl ETF,ASX,etf,,2026-08-22
-VGAD,Vanguard MSCI Intl (Hdg) ETF,ASX,etf,,2026-08-22
-VISM,Vanguard MSCI International SC ETF,ASX,etf,,2026-08-22
-V500,Vanguard S&P 500 US Shares Index ETF,ASX,etf,,2026-08-22
-V5AH,Vanguard S&P 500 US Shares Index H ETF,ASX,etf,,2026-08-22
-VTS,Vanguard US Total Market Shares ETF,ASX,etf,,2026-08-22
-VNGS,Vaughan Nelson Global Equity SMID Fund - Active ETF,ASX,etf,,2026-08-28
-V1AC,Vinva Global Alpha Fund - Active ETF,ASX,etf,,2026-08-28
-WCMQ,WCM Quality Glbl Gr Fund-Active ETF,ASX,etf,,2026-08-22
-FEIF,Western Asset Enhanced Income Fund - Active ETF,ASX,etf,,2026-08-28
-ZILR,Ziller Global Fund Active ETF,ASX,etf,,2026-08-22
+ticker,name,exchange,asset_type,issuer,category,currency,source_date
+ASAO,abrdn Sustainable Asian Opportunities Active ETF,ASX,etf,abrdn,equity,,2026-08-28
+AASF,Airlie Australian Share ETF,ASX,etf,Airlie,equity,,2026-08-22
+XALG,Alphinity Global Equity - Active ETF,ASX,etf,Alphinity,equity,,2026-08-22
+XASG,Alphinity Global Sust Eq - Active ETF,ASX,etf,Alphinity,equity,,2026-08-22
+MIDS,Antipodes Global SMID Active ETF,ASX,etf,Antipodes,equity,,2026-08-22
+AGX1,Antipodes Global Value Active ETF,ASX,etf,Antipodes,equity,,2026-08-28
+BAOR,Aoris International B Managed Fund,ASX,etf,Aoris,,,2026-08-22
+DAOR,Aoris International D Managed Fund Hdg,ASX,etf,Aoris,,,2026-08-22
+ADEF,Apostle Dundas Global Eq Fd D Actv ETF,ASX,etf,Apostle,equity,,2026-08-22
+XARO,Ardea Real Outcome Bond Complex ETF,ASX,etf,Ardea,fixed income,,2026-08-22
+DIVI,Ausbil Active Dividend Income Act ETF,ASX,etf,Ausbil,equity,,2026-08-22
+ASUS,Ausbil Active Sustainable Equity Fund - Active ETF,ASX,etf,Ausbil,equity,,2026-08-28
+GHIF,Ausbil Global Ess Infra Hdg Act ETF,ASX,etf,Ausbil,infrastructure,,2026-08-22
+GSCF,Ausbil Global SmallCap Act ETF,ASX,etf,Ausbil,equity,,2026-08-22
+BSUB,Australian Major Bank Subordinated Debt ETF,ASX,etf,,fixed income,,2026-08-28
+AVTE,Avantis Emerging Markets Equity Actv ETF,ASX,etf,Avantis,equity,,2026-08-22
+AVNG,Avantis Global Equity Active ETF,ASX,etf,Avantis,equity,,2026-08-22
+AVSV,Avantis Global Small Cap Value Actv ETF,ASX,etf,Avantis,equity,,2026-08-22
+GLOB,Barrow Hanley Global Share Active ETF,ASX,etf,Barrow Hanley,equity,,2026-08-22
+B1SM,Bell Global Emerging Coms Cls A Actv ETF,ASX,etf,Bell,equity,,2026-08-22
+28BB,Betashares 2028 Fxd Term Corp Bd Act ETF,ASX,etf,Betashares,fixed income,,2026-08-22
+29BB,Betashares 2029 Fixed Term Corporate Bond Active ETF,ASX,etf,Betashares,fixed income,,2026-08-28
+30BB,Betashares 2030 Fxd Term Corp Bd Act ETF,ASX,etf,Betashares,fixed income,,2026-08-22
+31BB,Betashares 2031 Fxd Term Corp Bd Act ETF,ASX,etf,Betashares,fixed income,,2026-08-22
+ASIA,BetaShares Asia Technology Tigers ETF,ASX,etf,Betashares,technology,,2026-08-22
+QPON,BetaShares Aus Bank Sr Fltng Rt Bd ETF,ASX,etf,Betashares,fixed income,,2026-08-22
+A200,Betashares Australia 200 ETF,ASX,etf,Betashares,,,2026-08-28
+HBRD,Betashares Australian Crdt Inc Actv ETF,ASX,etf,Betashares,fixed income,,2026-08-22
+HVST,Betashares Australian Div Hvstr Act ETF,ASX,etf,Betashares,equity,,2026-08-22
+ECRD,Betashares Aus Enh Crdt Inc Complex ETF,ASX,etf,Betashares,fixed income,,2026-08-22
+BEAR,BetaShares Aus Equities Bear Hedge ETF,ASX,etf,Betashares,equity,,2026-08-22
+BBOZ,Betashares Aus Eqs Strng Bear Cmpx ETF,ASX,etf,Betashares,equity,,2026-08-22
+EX20,BetaShares Aus Ex-20 Port Divrs ETF,ASX,etf,Betashares,multi-asset,,2026-08-22
+MMKT,Betashares Australian Cash Plus Active ETF,ASX,etf,Betashares,fixed income,,2026-08-28
+QFN,BetaShares Australian Fincls Sect ETF,ASX,etf,Betashares,financials,,2026-08-22
+AGVT,BetaShares Australian Government Bd ETF,ASX,etf,Betashares,fixed income,,2026-08-22
+AAA,BetaShares Aus High Interest Cash ETF,ASX,etf,Betashares,fixed income,,2026-08-22
+CRED,BetaShares Aus Inv Grd Corp Bd ETF,ASX,etf,Betashares,fixed income,,2026-08-22
+BHYB,Betashares Aust Mjr Bnk Hyb Idx ETF,ASX,etf,Betashares,fixed income,,2026-08-22
+OZBD,Betashares Australian Composite Bond ETF,ASX,etf,Betashares,fixed income,,2026-08-28
+MTUM,Betashares Australian Momentum ETF,ASX,etf,Betashares,equity,,2026-08-22
+AQLT,Betashares Australian Quality ETF,ASX,etf,Betashares,equity,,2026-08-28
+QRE,BetaShares Australian Res Sect ETF,ASX,etf,Betashares,resources,,2026-08-22
+SMLL,BetaShares Australian Small Coms Sel ETF,ASX,etf,Betashares,equity,,2026-08-22
+FAIR,BetaShares Australian Sustnby Ldrs ETF,ASX,etf,Betashares,equity,,2026-08-22
+YMAX,Betashares AUS Top 20 EqYldMxmsrCmplxETF,ASX,etf,Betashares,,,2026-08-22
+QBTC,Betashares Bitcoin ETF,ASX,etf,Betashares,crypto,,2026-08-22
+COMP,Betashares Bloomberg Ausbond Composite ETF,ASX,etf,Betashares,fixed income,,2026-08-28
+ERTH,BetaShares Climate Change Innovation ETF,ASX,etf,Betashares,technology,,2026-08-22
+CLDD,BetaShares Cloud Computing ETF,ASX,etf,Betashares,technology,,2026-08-22
+OOO,Betashares Crd Oil Idx Ccy Hdg Cmpx ETF,ASX,etf,Betashares,energy,,2026-08-22
+CRYP,BetaShares Crypto Innovators ETF,ASX,etf,Betashares,crypto,,2026-08-22
+DHHF,Betashares Diversified All Growth ETF,ASX,etf,Betashares,multi-asset,,2026-08-28
+DRIV,BetaShares Electric Vhcl & Fut Mblty ETF,ASX,etf,Betashares,,,2026-08-22
+XMET,BetaShares Energy Transition Metals ETF,ASX,etf,Betashares,energy,,2026-08-22
+QETH,Betashares Ethereum ETF,ASX,etf,Betashares,crypto,,2026-08-22
+AEBD,Betashares Ethical AUS Comps Bd ETF,ASX,etf,Betashares,fixed income,,2026-08-22
+DBBF,BetaShares Ethical Diversified Bal ETF,ASX,etf,Betashares,multi-asset,,2026-08-22
+DGGF,BetaShares Ethical Diversified Gr ETF,ASX,etf,Betashares,multi-asset,,2026-08-22
+DZZF,BetaShares Ethical Divers High Gr ETF,ASX,etf,Betashares,multi-asset,,2026-08-22
+HEUR,Betashares Europe Currency Hedged ETF,ASX,etf,Betashares,,,2026-08-22
+H100,Betashares FTSE 100 Currency Hedged ETF,ASX,etf,Betashares,equity,,2026-08-22
+F100,BetaShares FTSE 100 ETF,ASX,etf,Betashares,equity,,2026-08-22
+TOLL,BS FTSE Glbl Infras Shrs Ccy Hdg ETF,ASX,etf,Betashares,equity,,2026-08-22
+QOZ,BetaShares FTSE RAFI Australia 200 ETF,ASX,etf,Betashares,equity,,2026-08-22
+GEAR,BetaShares Geared AUS Eq Complx ETF,ASX,etf,Betashares,equity,,2026-08-22
+GGAB,Betashares Geared Lng AUS GovtBdCmplxETF,ASX,etf,Betashares,,,2026-08-22
+GGFD,Betashares Geared Lng USTrsBdCcyHCmpxETF,ASX,etf,Betashares,,,2026-08-22
+BBFD,Betashares Geared Short US Treasury Bond Currency Hedged Complex ETF,ASX,etf,Betashares,fixed income,,2026-08-28
+BBAB,Betashares Geared Shrt AUSGovtBdCmplxETF,ASX,etf,Betashares,,,2026-08-22
+GGUS,Betashares Geared US Eq Ccy H Cmplx ETF,ASX,etf,Betashares,equity,,2026-08-22
+WBND,Betashares Global Aggregate Bd Ccy H ETF,ASX,etf,Betashares,fixed income,,2026-08-22
+FOOD,Betashares Global Agltr Coms Ccy Hdg ETF,ASX,etf,Betashares,equity,,2026-08-22
+BNKS,Betashares Global Banks Currency Hdg ETF,ASX,etf,Betashares,financials,,2026-08-22
+CFLO,Betashares Global Cash Flow Kings ETF,ASX,etf,Betashares,fixed income,,2026-08-22
+HACK,BetaShares Global Cybersecurity ETF,ASX,etf,Betashares,technology,,2026-08-22
+ARMR,Betashares Global Defence ETF,ASX,etf,Betashares,,,2026-08-22
+FUEL,Betashares Global Engy Cmps Ccy Hgd ETF,ASX,etf,Betashares,,,2026-08-22
+MNRS,Betashares Global Gold Mnrs Ccy Hdg ETF,ASX,etf,Betashares,precious metals,,2026-08-22
+GBND,Betashares Global Green Bond Ccy Hdg ETF,ASX,etf,Betashares,fixed income,,2026-08-22
+DRUG,Betashares Global Healthcare Ccy Hdg ETF,ASX,etf,Betashares,healthcare,,2026-08-22
+GTUM,Betashares Global Momentum ETF,ASX,etf,Betashares,equity,,2026-08-22
+HQLT,BetaShares Global Quality Ldrs Ccy H ETF,ASX,etf,Betashares,equity,,2026-08-22
+RBTZ,BetaShares Glb Rbtc & Artfcl Intlgc ETF,ASX,etf,Betashares,,,2026-08-22
+QLTY,Betashares Global Quality Leaders ETF,ASX,etf,Betashares,equity,,2026-08-28
+ROYL,BetaShares Global Royalties ETF,ASX,etf,Betashares,,,2026-08-22
+HGBL,Betashares Global Shares Ccy Hdg ETF,ASX,etf,Betashares,equity,,2026-08-22
+BGBL,Betashares Global Shares ETF,ASX,etf,Betashares,equity,,2026-08-28
+EXUS,Betashares Global Shares Ex US ETF,ASX,etf,Betashares,equity,,2026-08-22
+HETH,Betashares Global Sustnby Ldrs Ccy H ETF,ASX,etf,Betashares,equity,,2026-08-22
+ETHI,BetaShares Global Sstnbty Ldrs ETF,ASX,etf,Betashares,,,2026-08-22
+URNM,BetaShares Global Uranium ETF,ASX,etf,Betashares,industrial metals,,2026-08-22
+QAU,Betashares Gold Bullion Currency H ETF,ASX,etf,Betashares,precious metals,,2026-08-22
+IIND,BetaShares India Quality ETF,ASX,etf,Betashares,equity,,2026-08-22
+UTIP,Betashares Infl-Protd US Trs Bd CcyH ETF,ASX,etf,Betashares,fixed income,,2026-08-22
+HCRD,BetaShares Intst RtHdgAUSInvmGrdCrpBdETF,ASX,etf,Betashares,,,2026-08-22
+HJPN,Betashares Japan Currency Hedged ETF,ASX,etf,Betashares,,,2026-08-22
+AUST,Betashares Managed Rsk AUS Shrs Cmpx ETF,ASX,etf,Betashares,,,2026-08-22
+WRLD,Betashares Managed Rsk Glb Shrs Cmpx ETF,ASX,etf,Betashares,,,2026-08-22
+BEMG,Betashares MSCI Em Mkts Complex ETF,ASX,etf,Betashares,equity,,2026-08-22
+HNDQ,Betashares Nasdaq 100 Currency H ETF,ASX,etf,Betashares,technology,,2026-08-22
+QNDQ,Betashares Nasdaq 100 Equal Weight ETF,ASX,etf,Betashares,technology,,2026-08-22
+NDQ,Betashares NASDAQ 100 ETF,ASX,etf,Betashares,technology,,2026-08-28
+QMAX,Betashares Nasdaq 100 Yld Mxmsr Cmplx ET,ASX,etf,Betashares,technology,,2026-08-22
+JNDQ,Betashares Nasdaq Next Gen 100 ETF,ASX,etf,Betashares,,,2026-08-22
+HQUS,Betashares S&P 500 Eql Wght Ccy Hgd ETF,ASX,etf,Betashares,equity,,2026-08-22
+QUS,BetaShares S&P 500 Equal Weight ETF,ASX,etf,Betashares,equity,,2026-08-22
+UMAX,Betashares S&P 500 YieldMxmsrCmplxETF,ASX,etf,Betashares,equity,,2026-08-22
+HYLD,Betashares S&P Australian Shrs Hi YldETF,ASX,etf,Betashares,equity,,2026-08-22
+INCM,Betashares S&P Glb H Div Aristocrats ETF,ASX,etf,Betashares,equity,,2026-08-22
+ATEC,BetaShares S&P/ASX Australian Tech ETF,ASX,etf,Betashares,equity,,2026-08-22
+RCKT,Betashares Space Industry ETF,ASX,etf,Betashares,,,2026-08-22
+AUDS,Betashares Strong Australian DllrCmpxETF,ASX,etf,Betashares,,,2026-08-22
+YANK,Betashares Strong US Dollar Complex ETF,ASX,etf,Betashares,,,2026-08-22
+USD,BetaShares US Dollar ETF,ASX,etf,Betashares,,,2026-08-22
+US10,Betashares US Trs Bd 7-10 Year Ccy H ETF,ASX,etf,Betashares,fixed income,,2026-08-22
+BBUS,Betashares US Eq Strng Bear CcyHCmplxETF,ASX,etf,Betashares,equity,,2026-08-22
+GGOV,BetaShares US Trs Bd 20+Yr Ccy H ETF,ASX,etf,Betashares,fixed income,,2026-08-22
+GAME,BetaShares Video Games and Esports ETF,ASX,etf,Betashares,,,2026-08-22
+GHHF,Betashares Wealthbuilder All Gr Geared Complex ETF,ASX,etf,Betashares,,,2026-08-28
+G200,BetasharesWthBdrAUS200Grd30-40%LVRCpxETF,ASX,etf,Betashares,,,2026-08-22
+GGBL,BetasharesWBldrGlbShrsGrd30-40%LVRCpxETF,ASX,etf,Betashares,,,2026-08-22
+GNDQ,BetasharesWthBdrNdq100Grd30-40%LVRCpxETF,ASX,etf,Betashares,,,2026-08-22
+BNDS,BetaShares Western Asset Aus Bd Actv ETF,ASX,etf,Betashares,fixed income,,2026-08-22
+GSUS,Candriam Sustainable Global Eq Act ETF,ASX,etf,Candriam,equity,,2026-08-22
+CGHE,Claremont Global ETF (hedged),ASX,etf,Claremont,,,2026-08-22
+CGUN,Claremont Global ETF,ASX,etf,Claremont,,,2026-08-22
+CIIH,ClearBridge Glbl Infras Inc H Active ETF,ASX,etf,ClearBridge,,,2026-08-22
+CUIV,ClearBridge Global Infras Val Active ETF,ASX,etf,ClearBridge,,,2026-08-22
+CIVH,ClearBridge Glbl Infras Val H Active ETF,ASX,etf,ClearBridge,,,2026-08-22
+R3AL,ClearBridge Real Income Active ETF,ASX,etf,ClearBridge,,,2026-08-22
+CIEM,Colchester Emerging Markets Bond Complex ETF,ASX,etf,Colchester,fixed income,,2026-08-28
+GFXD,Coolabah Active Global Bond Complex ETF,ASX,etf,Coolabah,fixed income,,2026-08-28
+DCOR,Daintree Core Income Trust Active ETF,ASX,etf,Daintree,equity,,2026-08-22
+BTXX,DigitalX Bitcoin ETF,ASX,etf,DigitalX,crypto,,2026-08-22
+DACE,Dimensional AUS Cor Eq Tr - Active ETF,ASX,etf,Dimensional,equity,,2026-08-22
+DAVA,Dimensional Australian Value Active ETF,ASX,etf,Dimensional,equity,,2026-08-22
+DFGH,Dimensional Gbl Core Eq Hdg Active ETF,ASX,etf,Dimensional,equity,,2026-08-22
+DGCE,Dimsnl Glbl Cor Eq Tr (UnH Cl)-Actv ETF,ASX,etf,Dimensional,equity,,2026-08-22
+DGSM,Dimensional Gbl Small Comp Active ETF,ASX,etf,Dimensional,,,2026-08-22
+DGVA,Dimensional Global Value Active ETF,ASX,etf,Dimensional,equity,,2026-08-22
+EAFZ,Ellerston Asia Growth Fund Complex ETF,ASX,etf,Ellerston,multi-asset,,2026-08-22
+VOLT,ETFS Global Lithium Miners ETF,ASX,etf,Global X,industrial metals,,2026-08-22
+CPPR,ETFS Global Pure Play Copper Miners ETF,ASX,etf,Global X,industrial metals,,2026-08-22
+HUGE,ETFS Magnificent 7+ ETF,ASX,etf,Global X,,,2026-08-22
+BEST,ETFS US Quality ETF,ASX,etf,Global X,equity,,2026-08-22
+WWWW,ETFS US Technology ETF,ASX,etf,Global X,technology,,2026-08-22
+FASI,Fidelity Asia Active ETF,ASX,etf,Fidelity,,,2026-08-22
+FHCO,Fidelity Australian High Convct Act ETF,ASX,etf,Fidelity,,,2026-08-22
+FEMX,Fidelity Global Emerging Markets ETF,ASX,etf,Fidelity,,,2026-08-22
+FCAP,Fidelity Global Future Leaders Actv ETF,ASX,etf,Fidelity,,,2026-08-22
+FIIN,Fidelity India Active ETF,ASX,etf,Fidelity,,,2026-08-22
+FIRE,Firetrail Alpha Plus Fund Complex ETF,ASX,etf,Firetrail,equity,,2026-08-22
+FSML,Firetrail Australian Small Comp Act ETF,ASX,etf,Firetrail,,,2026-08-22
+S3GO,Firetrail S3 Global Opports - Active ETF,ASX,etf,Firetrail,,,2026-08-22
+FSCF,First Sentier Active Cash Fund Active ETF,ASX,etf,First Sentier,fixed income,,2026-08-28
+XX20,First Sentier ex-20 Aus Share Fd Act ETF,ASX,etf,First Sentier,equity,,2026-08-22
+LEVR,First Sentier Geared AUS Shr cmplx ETF,ASX,etf,First Sentier,,,2026-08-22
+FRAR,Franklin Australian Absolute Ret Bd AETF,ASX,etf,Franklin,fixed income,,2026-08-22
+FRGG,Franklin Global Growth A ETF,ASX,etf,Franklin,equity,,2026-08-22
+FGSE,Franklin Global Systematic Equity FD - Active ETF,ASX,etf,Franklin,equity,,2026-08-28
+GCQF,GCQ Global Equities Complex ETF,ASX,etf,GCQ,equity,,2026-08-28
+HGCQ,GCQ Global Equities Hedged Complex ETF,ASX,etf,GCQ,equity,,2026-08-22
+GXAI,Global X Artificial Intelligence ETF,ASX,etf,Global X,technology,,2026-08-22
+AINF,Global X Artificial Intllgnc Infras ETF,ASX,etf,Global X,,,2026-08-22
+A300,Global X Australia 300 ETF,ASX,etf,Global X,,,2026-08-22
+OZXX,Global X Australia ex Fincls & Res ETF,ASX,etf,Global X,financials,,2026-08-22
+BANK,Global X Australian Bank Credit ETF,ASX,etf,Global X,fixed income,,2026-08-22
+ACDC,Global X Battery Tech & Lithium ETF,ASX,etf,Global X,industrial metals,,2026-08-22
+BCOM,Global X Bloomberg Commodity Complex ETF,ASX,etf,Global X,resources,,2026-08-22
+DRGN,Global X China Tech ETF,ASX,etf,Global X,,,2026-08-22
+WIRE,Global X Copper Miners ETF AUD Inc,ASX,etf,Global X,industrial metals,,2026-08-22
+BUGG,Global X Cybersecurity ETF,ASX,etf,Global X,technology,,2026-08-22
+DTEC,Global X Defence Tech ETF,ASX,etf,Global X,,,2026-08-22
+ESTX,Global X EURO STOXX 50® ETF,ASX,etf,Global X,,,2026-08-22
+FHNG,Global X FANG+ Currency Hedged ETF,ASX,etf,Global X,technology,,2026-08-22
+FANG,Global X FANG+ ETF,ASX,etf,Global X,technology,,2026-08-22
+GHLD,Global X Gold Bullion (Hedged) ETF,ASX,etf,Global X,precious metals,,2026-08-22
+GXLD,Global X Gold Bullion ETF,ASX,etf,Global X,precious metals,,2026-08-22
+GMTL,Global X Green Metal Miners ETF,ASX,etf,Global X,resources,,2026-08-22
+HMND,Global X Humanoid Robotics ETF,ASX,etf,Global X,technology,,2026-08-22
+HGEN,Global X Hydrogen ETF,ASX,etf,Global X,energy,,2026-08-22
+NDIA,Global X India Nifty 50 ETF,ASX,etf,Global X,,,2026-08-22
+J100,Global X Japan TOPIX 100 ETF,ASX,etf,Global X,,,2026-08-22
+TECH,Global X Morningstar Global Tech ETF,ASX,etf,Global X,,,2026-08-22
+ISMD,Global X MSCI International Small and Mid Cap ETF,ASX,etf,Global X,equity,,2026-08-28
+QYLD,Global X Nasdaq 100 Covered Call ETF,ASX,etf,Global X,technology,,2026-08-22
+GOLD,Global X Physical Gold Structured,ASX,etf,Global X,precious metals,,2026-08-22
+ETPMAG,Global X Physical Silver Structured,YHD,etf,Global X,precious metals,,2026-08-22
+ROBO,Global X ROBO Glbl Rbtc & Atmtn ETF,ASX,etf,Global X,,,2026-08-22
+RSSL,Global X Russell 2000 ETF,ASX,etf,Global X,,,2026-08-22
+UYLD,Global X S&P 500 Covered Call ETF,ASX,etf,Global X,equity,,2026-08-22
+ZYUS,Global X S&P 500 Hi Yld Low Vol ETF,ASX,etf,Global X,equity,,2026-08-22
+GRPA,Global X S&P Australia GARP ETF,ASX,etf,Global X,equity,,2026-08-28
+CURE,Global X S&P Biotech ETF,ASX,etf,Global X,healthcare,,2026-08-22
+GHRP,Global X S&P World ex Aus GARP (H) ETF,ASX,etf,Global X,equity,,2026-08-22
+GARP,Global X S&P World ex Australia GARP ETF,ASX,etf,Global X,equity,,2026-08-22
+AYLD,Global X S&P/ASX 200 Covered Call ETF,ASX,etf,Global X,equity,,2026-08-22
+ZYAU,Global X S&P/ASX 200 High Dividend ETF,ASX,etf,Global X,equity,,2026-08-22
+SEMI,Global X Semiconductor ETF,ASX,etf,Global X,technology,,2026-08-22
+SLVM,Global X Silver Miners ETF,ASX,etf,Global X,precious metals,,2026-08-22
+MOON,Global X Space Tech ETF,ASX,etf,Global X,,,2026-08-28
+LNAS,Global X Ultra Long Nasdaq 100ComplexETF,ASX,etf,Global X,technology,,2026-08-22
+SNAS,Global X Ultra Short Nasdaq100ComplexETF,ASX,etf,Global X,technology,,2026-08-22
+ATOM,Global X Uranium ETF,ASX,etf,Global X,industrial metals,,2026-08-22
+U100,Global X US 100 ETF,ASX,etf,Global X,,,2026-08-22
+PAVE,Global X US Infrastructure Dev ETF,ASX,etf,Global X,infrastructure,,2026-08-22
+USTB,Global X US Treasury Bond (Ccy Hdg) ETF,ASX,etf,Global X,fixed income,,2026-08-22
+USIG,Global X USD Corporate Bd (Ccy Hdg) ETF,ASX,etf,Global X,fixed income,,2026-08-22
+USHY,Global X USD High Yld Bond (Ccy Hdg) ETF,ASX,etf,Global X,fixed income,,2026-08-22
+ISLM,Hejaz Equities ETF,ASX,etf,Hejaz,equity,,2026-08-22
+HJHI,HEJAZ High Income Active ETF,ASX,etf,Hejaz,,,2026-08-22
+SKUK,Hejaz Sukuk Active ETF A,ASX,etf,Hejaz,,,2026-08-22
+HYGG,Hyperion Global Gr Coms Active ETF,ASX,etf,Hyperion,equity,,2026-08-22
+IIGF,Intelligent Investor Aust Eq Gr ETF,ASX,etf,Intelligent Investor,equity,,2026-08-22
+INIF,Intelligent Investor AUS Eq Inc ETF,ASX,etf,Intelligent Investor,equity,,2026-08-22
+INES,Intelligent Investor Ethical Share ETF,ASX,etf,Intelligent Investor,equity,,2026-08-22
+IISV,Intelligent Investor Select Val Shr ETF,ASX,etf,Intelligent Investor,,,2026-08-22
+IMLC,Investors Mutual Concentrated Australian Share Fund - Active ETF,ASX,etf,Investors Mutual,equity,,2026-08-28
+EQIN,Investors Mutual Equity Income Fund - Complex ETF,ASX,etf,Investors Mutual,fixed income,,2026-08-28
+ALTB,iShares 15+ Year Australian Gov Bd ETF,ASX,etf,iShares,fixed income,,2026-08-22
+ULTB,iShares 20+ Year US Treasury Bd AUDH ETF,ASX,etf,iShares,fixed income,,2026-08-22
+IAA,iShares Asia 50 ETF (AU),ASX,etf,iShares,,,2026-08-22
+IBAL,iShares Balanced ESG ETF,ASX,etf,iShares,multi-asset,,2026-08-22
+IBIT,iShares Bitcoin ETF,ASX,etf,iShares,crypto,,2026-08-22
+IZZ,iShares China Large-Cap ETF (AU),ASX,etf,iShares,,,2026-08-22
+BILL,iShares Core Cash ETF,ASX,etf,iShares,fixed income,,2026-08-22
+IAF,iShares Core Composite Bond ETF,ASX,etf,iShares,fixed income,,2026-08-22
+ICOR,iShares Core Corporate Bond ETF,ASX,etf,iShares,fixed income,,2026-08-22
+GLIN,iShares Core FTSE Global Infras AUDH ETF,ASX,etf,iShares,equity,,2026-08-22
+GLPR,iShares Core FTSE Glb Prpty ExAusAUDHETF,ASX,etf,iShares,equity,,2026-08-22
+AGGG,iShares Core Global Aggt Bond AUD H ETF,ASX,etf,iShares,fixed income,,2026-08-22
+IHCB,iShares Core Global Corp Bd AUDH ETF,ASX,etf,iShares,fixed income,,2026-08-22
+IESG,iShares Core MSCI Australia ESG ETF,ASX,etf,iShares,equity,,2026-08-22
+IHWL,iShares Core MSCI Wld ex Aus ESG AUHDETF,ASX,etf,iShares,equity,,2026-08-22
+IWLD,iShares Core MSCI Wld Ex Aus ESG ETF,ASX,etf,iShares,equity,,2026-08-22
+IOZ,iShares Core S&P/ASX 200 ETF,ASX,etf,iShares,equity,,2026-08-22
+ICME,iShares Credit Income Active ETF,ASX,etf,iShares,fixed income,,2026-08-28
+MVOL,iShares Edge MSCI Australia Mini Vol ETF,ASX,etf,iShares,equity,,2026-08-22
+AUMF,iShares Edge MSCI Australia Mltfctr ETF,ASX,etf,iShares,equity,,2026-08-22
+ISEC,iShares Enhanced Cash ETF,ASX,etf,iShares,fixed income,,2026-08-22
+IEU,iShares Europe ETF (AU),ASX,etf,iShares,,,2026-08-22
+IHOO,iShares Global 100 AUD Hedged ETF,ASX,etf,iShares,,,2026-08-22
+IOO,iShares Global 100 ETF (AU),ASX,etf,iShares,,,2026-08-22
+AESG,iShares Global Aggregate Bd ESG AUDH ETF,ASX,etf,iShares,fixed income,,2026-08-22
+IXI,iShares Global Consumer Staples ETF (AU),ASX,etf,iShares,,,2026-08-22
+IXJ,iShares Global Healthcare ETF (AU),ASX,etf,iShares,healthcare,,2026-08-22
+IHHY,iShares Global High Yield Bond AUDH ETF,ASX,etf,iShares,fixed income,,2026-08-22
+ILB,iShares Government Inflation ETF,ASX,etf,iShares,,,2026-08-22
+IGRO,iShares High Growth ESG ETF,ASX,etf,iShares,equity,,2026-08-22
+IHEB,iShares JP Morgan USD EmMkts Bd AUDH ETF,ASX,etf,iShares,fixed income,,2026-08-22
+IVE,iShares MSCI EAFE ETF (AU),ASX,etf,iShares,equity,,2026-08-22
+IEM,iShares MSCI Emerging Markets ETF (AU),ASX,etf,iShares,equity,,2026-08-22
+EMXC,iShares MSCI Emerging Mkts ex China ETF,ASX,etf,iShares,equity,,2026-08-22
+IJP,iShares MSCI Japan ETF (AU),ASX,etf,iShares,equity,,2026-08-22
+IKO,iShares MSCI South Korea ETF (AU),ASX,etf,iShares,equity,,2026-08-22
+WVOL,iShares MSCI World ex Aus Min Vol ETF,ASX,etf,iShares,equity,,2026-08-22
+ITEK,iShares Nasdaq Top 30 ETF,ASX,etf,iShares,,,2026-08-22
+GLDN,iShares Physical Gold ETF,ASX,etf,iShares,precious metals,,2026-08-22
+IHVV,iShares S&P 500 AUD Hedged ETF,ASX,etf,iShares,equity,,2026-08-22
+IVV,iShares S&P 500 ETF,ASX,etf,iShares,equity,,2026-08-22
+IJH,iShares S&P Mid-Cap ETF,ASX,etf,iShares,equity,,2026-08-22
+IJR,iShares S&P Small-Cap ETF,ASX,etf,iShares,equity,,2026-08-22
+ILC,iShares S&P/ASX 20 ETF,ASX,etf,iShares,equity,,2026-08-22
+IHD,iShares S&P/ASX Div Opps ESG Scrnd ETF,ASX,etf,iShares,equity,,2026-08-22
+ISO,iShares S&P/ASX Small Ordinaries ETF,ASX,etf,iShares,equity,,2026-08-22
+IGB,iShares Treasury ETF,ASX,etf,iShares,fixed income,,2026-08-22
+IACT,iShares U.S. Factor Rotation Active ETF,ASX,etf,iShares,,,2026-08-22
+IUSG,iShares U.S. Treasury Bond AUDH ETF,ASX,etf,iShares,fixed income,,2026-08-22
+WDMF,iShares World Equity Factor ETF,ASX,etf,iShares,equity,,2026-08-22
+WYNC,iShares World Equity High Income Complex ETF,ASX,etf,iShares,equity,,2026-08-28
+IYLD,iShares Yield Plus ETF,ASX,etf,iShares,,,2026-08-22
+FUTR,Janus Henderson Global Sustainable Active ETF,ASX,etf,Janus Henderson,equity,,2026-08-28
+GOOD,Janus Henderson Sustainable Credit Active ETF,ASX,etf,Janus Henderson,fixed income,,2026-08-28
+T3MP,JPMorgan Climate Change Solution Act ETF,ASX,etf,JPMorgan,,,2026-08-22
+JEME,JPMorgan EM Mkts Rsrh Enh Idx Eq Act ETF,ASX,etf,JPMorgan,equity,,2026-08-22
+JEPI,JPMorgan Equity Premium Income ActiveETF,ASX,etf,JPMorgan,equity,,2026-08-22
+JHPI,JPMorgan Equity PremiumIncome(Hdg)ActETF,ASX,etf,JPMorgan,equity,,2026-08-22
+JEGA,JPMorgan Global Eq Prm Inc Cmplx ETF,ASX,etf,JPMorgan,equity,,2026-08-22
+JHGA,JPMorgan Global Eq Prm Inc (H) Cmplx ETF,ASX,etf,JPMorgan,equity,,2026-08-22
+JREG,JPMorgan Global Rsrch Enh Eqt Actv ETF,ASX,etf,JPMorgan,,,2026-08-22
+JRHG,JPMorgan Global Rsrch Enh Eq H Actv ETF,ASX,etf,JPMorgan,equity,,2026-08-22
+JGLO,JPMorgan Global Select Equity Active ETF,ASX,etf,JPMorgan,equity,,2026-08-22
+JHLO,JPMorgan Global Select Eq (Hdg) Act ETF,ASX,etf,JPMorgan,equity,,2026-08-22
+JPEQ,JPMorgan US 100Q Eq Prm Inc Act ETF,ASX,etf,JPMorgan,equity,,2026-08-22
+JPHQ,JPMorgan US 100Q EquityPrmInc(Hdg)ActETF,ASX,etf,JPMorgan,equity,,2026-08-22
+L1HI,L1 Capital International (Hedged) Active ETF,ASX,etf,L1 Capital,,,2026-08-28
+L1IF,L1 Capital International ETF,ASX,etf,L1 Capital,,,2026-08-22
+LHGG,Lakehouse Global Growth Active ETF,ASX,etf,Lakehouse,equity,,2026-08-22
+LNYN,Lanyon Investment Active ETF,ASX,etf,Lanyon,,,2026-08-22
+ROAR,Lion Active ETF,ASX,etf,Lion,,,2026-08-28
+LPGD,Loftus Peak Global Disruption Mgd Fd ETF,ASX,etf,Loftus Peak,technology,,2026-08-22
+LPHD,Loftus Peak Global Disruption H Act ETF,ASX,etf,Loftus Peak,technology,,2026-08-22
+LSGE,Loomis Sayles Global Equity Fund - Active ETF,ASX,etf,Loomis Sayles,equity,,2026-08-28
+MQAE,Macquarie Core Australian Equity Active ETF,ASX,etf,Macquarie,equity,,2026-08-28
+MQHG,Macquarie Core Global Equity (Hedged) Active ETF,ASX,etf,Macquarie,equity,,2026-08-28
+MQEG,Macquarie Core Global Equity Active ETF,ASX,etf,Macquarie,equity,,2026-08-28
+MQDB,Macquarie Dynamic Bond Active ETF,ASX,etf,Macquarie,fixed income,,2026-08-28
+MQXS,Macquarie Global Small Companies Active ETF,ASX,etf,Macquarie,equity,,2026-08-28
+MQYM,Macquarie Global Yield Maximiser Active ETF,ASX,etf,Macquarie,fixed income,,2026-08-28
+MQIO,Macquarie Income Opportunities Active ETF,ASX,etf,Macquarie,,,2026-08-28
+MQSD,Macquarie Subordinated Debt Active ETF,ASX,etf,Macquarie,fixed income,,2026-08-28
+MQWS,Macquarie Walter Scott Global Equity Active ETF,ASX,etf,Macquarie,equity,,2026-08-28
+MGOC,Magellan Global Open Units Active ETF,UNKNOWN,unit,Magellan Global Open,,,2026-08-22
+OPPT,Magellan Global Opportunities Active ETF,ASX,etf,Magellan,,,2026-08-22
+MICH,Magellan Infrastructure Ccy Hdg Act ETF,ASX,etf,Magellan,infrastructure,,2026-08-22
+MFOA,Milford Australian Absolute Growth Complex ETF,ASX,etf,Milford,equity,,2026-08-28
+MKAX,Montaka Global Extension ETF,ASX,etf,Montaka,,,2026-08-22
+MOGL,Montaka Global Long Only Equities ETF,ASX,etf,Montaka,equity,,2026-08-22
+MSTR,Morningstar International Shrs Actv ETF,ASX,etf,Morningstar,,,2026-08-22
+MCCL,Munro Climate Change Leaders Fund Active ETF,ASX,etf,Munro,,,2026-08-28
+MCGG,Munro Concentrated Global Growth Active ETF,ASX,etf,Munro,equity,,2026-08-28
+MAET,Munro Global Growth Fund Complex ETF,ASX,etf,Munro,multi-asset,,2026-08-28
+BDCI,Muzinich BDC Income Fund - Active ETF,ASX,etf,Muzinich,fixed income,,2026-08-28
+NNWH,Nanuk New World (Currency Hedged) ActETF,ASX,etf,Nanuk,,,2026-08-22
+NNUK,Nanuk New World ETF,ASX,etf,Nanuk,,,2026-08-22
+IMPQ,Perennial Better Future Fund,ASX,etf,Perennial,,,2026-08-22
+EIGA,Perennial Income Generator Fund,ASX,etf,Perennial,,,2026-08-22
+DIFF,Perpetual Diversified Income Active ETF,ASX,etf,Perpetual,multi-asset,,2026-08-22
+GIVE,Perpetual ESG Australian Share ActiveETF,ASX,etf,Perpetual,equity,,2026-08-22
+PMGOLD,Perth Mint Gold,ASX,etf,Perth Mint,precious metals,,2026-08-28
+EARN,PIMCO Short Term Active Yield Active ETF,ASX,etf,PIMCO,,,2026-08-28
+PAXX,Platinum Asia ETF,ASX,etf,Platinum,,,2026-08-22
+PIXX,Platinum International ETF,ASX,etf,Platinum,,,2026-08-22
+PGA1,Plato Global Alpha Fund Complex ETF,ASX,etf,Plato,equity,,2026-08-28
+PGI2,Plato Global Shares Income Active ETF,ASX,etf,Plato,equity,,2026-08-22
+QGFH,Quay Global Real Estate AUD Act ETF,ASX,etf,Quay,property,,2026-08-22
+QGRU,Quay Global Real Estate UH Act ETF,ASX,etf,Quay,property,,2026-08-22
+RIIF,Resolution Cap Glb Lstd Infras Act ETF,ASX,etf,Resolution Capital,,,2026-08-22
+RCAP,Resolution Capital Global PrptySecActETF,ASX,etf,Resolution Capital,,,2026-08-22
+RGB,Russell Inv Australian Government Bd ETF,ASX,etf,Russell Investments,fixed income,,2026-08-22
+RARI,Russell Inv Australian Rspnb Inv ETF,ASX,etf,Russell Investments,,,2026-08-22
+RCB,Russell Inv Australian Select CorpBd ETF,ASX,etf,Russell Investments,,,2026-08-22
+RSM,Russell Inv Australian Semi-Govt Bd ETF,ASX,etf,Russell Investments,fixed income,,2026-08-22
+RDV,Russell Inv High Dividend Aus Shrs ETF,ASX,etf,Russell Investments,equity,,2026-08-22
+RGOS,Russell Inv Sust Global Opps Complex ETF,ASX,etf,Russell Investments,equity,,2026-08-22
+SVNP,Savana US Small Caps Active ETF,ASX,etf,Savana,equity,,2026-08-28
+CORE,Schroder Global Core Fund Active ETF,ASX,etf,Schroder,equity,,2026-08-22
+ALPH,Schroder Global Equity Alpha Active ETF,ASX,etf,Schroder,equity,,2026-08-22
+GROW,Schroder Real Return Active ETF,ASX,etf,Schroder,,,2026-08-22
+SFIF,Seed Financial Income Fund Active ETF,ASX,etf,Seed,fixed income,,2026-08-28
+APA,Smart Asia Pacific ETF,ASX,etf,Smart,,,2026-08-22
+AUE,Smart Australian ESG ET,ASX,etf,Smart,equity,,2026-08-22
+ASP,Smart Australian Property ETF,ASX,etf,Smart,property,,2026-08-22
+BOT,Smart Automation and Robotics ETF,ASX,etf,Smart,technology,,2026-08-22
+BTC,Smart Bitcoin ETF,ASX,etf,Smart,crypto,,2026-08-22
+INF,Smart Global Infrastructure ETF,ASX,etf,Smart,infrastructure,,2026-08-22
+GPR,Smart Global Property ETF,ASX,etf,Smart,property,,2026-08-22
+USM,Smart US Mid Cap ETF,ASX,etf,Smart,equity,,2026-08-22
+SPHX,Spheria Australian Smaller Companies Fund - Active ETF,ASX,etf,Spheria,equity,,2026-08-28
+SPY,Stt Strt SPDR S&P 500 ETF,ASX,etf,SPDR,equity,,2026-08-22
+DJRE,Stt StrtSPDRDowJonesGlblRlEsttESGTltdETF,ASX,etf,SPDR,,,2026-08-22
+SYI,Stt Strt SPDR MSCI Aus Sel Hi Div YldETF,ASX,etf,SPDR,equity,,2026-08-22
+QMIX,Stt Strt SPDR MSCI World Quality Mix ETF,ASX,etf,SPDR,equity,,2026-08-22
+WEMG,Stt Strt SPDR S&P EM Crb Aware ETF,ASX,etf,SPDR,equity,,2026-08-22
+WDIV,Stt Strt SPDR S&P Global Dividend ETF,ASX,etf,SPDR,equity,,2026-08-22
+WXOZ,Stt Strt SPDR S&P World ex AusCrbAwrETF,ASX,etf,SPDR,equity,,2026-08-22
+WXHG,Stt Strt SPDR S&P World ex AusCbAwrHETF,ASX,etf,SPDR,equity,,2026-08-22
+E200,Stt Strt SPDR S&P/ASX 200 ESG ETF,ASX,etf,SPDR,equity,,2026-08-22
+STW,Stt Strt SPDR S&P/ASX 200 ETF,ASX,etf,SPDR,equity,,2026-08-22
+OZF,Stt Strt SPDRS&P/ASX200FinclsEX-AREITETF,ASX,etf,SPDR,equity,,2026-08-22
+SLF,Stt Strt SPDR S&P/ASX 200 Lstd Prpty ETF,ASX,etf,SPDR,equity,,2026-08-22
+OZR,Stt Strt SPDR S&P/ASX 200 Resources ETF,ASX,etf,SPDR,resources,,2026-08-22
+SFY,Stt Strt SPDR S&P/ASX 50 ETF,ASX,etf,SPDR,equity,,2026-08-22
+BOND,Stt Strt SPDR S&P/ASX iBoxx Aus Bd ETF,ASX,etf,SPDR,fixed income,,2026-08-22
+GOVT,Stt Strt SPDRS&P/ASXiBoxxAusGovtBdETF,ASX,etf,SPDR,,,2026-08-22
+SSO,Stt Strt SPDR S&P/ASX Small Ordnrs ETF,ASX,etf,SPDR,equity,,2026-08-22
+SWTZ,Switzer Dividend Growth ETF-Active ETF,ASX,etf,Switzer,equity,,2026-08-22
+TCAP,Ten Cap Alpha Plus Complex ETF,ASX,etf,Ten Cap,equity,,2026-08-28
+TBIL,VanEck 1-3 Month US Treasury Bond ETF,ASX,etf,VanEck,fixed income,,2026-08-22
+1GOV,VanEck 1-5 Year Australian Govt Bd ETF,ASX,etf,VanEck,fixed income,,2026-08-22
+XGOV,VanEck 10+ Year Australian Govt Bd ETF,ASX,etf,VanEck,fixed income,,2026-08-22
+5GOV,VanEck 5-10 Year Australian Govt Bd ETF,ASX,etf,VanEck,fixed income,,2026-08-22
+MVB,VanEck Australian Banks ETF,ASX,etf,VanEck,financials,,2026-08-22
+PLUS,VanEck Australian Corp Bd+ ETF,ASX,etf,VanEck,fixed income,,2026-08-22
+MVW,VanEck Australian Equal Wt ETF,ASX,etf,VanEck,,,2026-08-22
+FSUB,VanEck Australian Fixed Rate Sub Dbt ETF,ASX,etf,VanEck,,,2026-08-22
+FLOT,VanEck Australian Fltng Rt ETF,ASX,etf,VanEck,,,2026-08-22
+ALFA,VanEck Australian Long Short Complex ETF,ASX,etf,VanEck,,,2026-08-22
+MVA,VanEck Australian Property ETF,ASX,etf,VanEck,property,,2026-08-22
+MVR,VanEck Australian Resources ETF,ASX,etf,VanEck,resources,,2026-08-22
+RMBS,VanEck Australian RMBS ETF,ASX,etf,VanEck,,,2026-08-22
+SUBD,VanEck Australian Sbdntd Dbt ETF,ASX,etf,VanEck,,,2026-08-22
+GCAP,VanEck Bentham Global Cap Secs Actv ETF,ASX,etf,VanEck,,,2026-08-22
+VBTC,VanEck Bitcoin ETF,ASX,etf,VanEck,crypto,,2026-08-22
+MONY,VanEck Cash Plus Active ETF,ASX,etf,VanEck,fixed income,,2026-08-22
+CNEW,VanEck China New Economy ETF,ASX,etf,VanEck,,,2026-08-22
+VBAL,VanEck Core+ Diversified Balanced Active ETF,ASX,etf,VanEck,multi-asset,,2026-08-28
+VGRO,VanEck Core+ Diversified Growth Act ETF,ASX,etf,VanEck,multi-asset,,2026-08-22
+VHGR,VanEck Core+ Diversified High Gr Act ETF,ASX,etf,VanEck,multi-asset,,2026-08-22
+EBND,VanEck Emerging Income Opps Actv ETF,ASX,etf,VanEck,,,2026-08-22
+CETF,VanEck FTSE China A50 ETF,ASX,etf,VanEck,equity,,2026-08-22
+IFRA,VanEck FTSE Glbl Infras(AUD Hdg)ETF,ASX,etf,VanEck,equity,,2026-08-22
+REIT,VanEck FTSE Intl Prop (AUD Hdg) ETF,ASX,etf,VanEck,equity,,2026-08-22
+GMVW,VanEck Geared Australian Equal Weight H,ASX,etf,VanEck,,,2026-08-22
+CLNE,VanEck Global Clean Energy ETF,ASX,etf,VanEck,energy,,2026-08-22
+DFND,VanEck Global Defence ETF,ASX,etf,VanEck,,,2026-08-22
+HLTH,VanEck Global Hlthcr Ldrs ETF,ASX,etf,VanEck,,,2026-08-22
+LEND,VanEck Global Listed Priv Crdt AUD H ETF,ASX,etf,VanEck,fixed income,,2026-08-22
+GPEQ,VanEck Global Listed Private Equity ETF,ASX,etf,VanEck,equity,,2026-08-22
+NUGG,VanEck Gold Bullion ETF,ASX,etf,VanEck,precious metals,,2026-08-22
+GDX,VanEck Gold Miners ETF,ASX,etf,VanEck,precious metals,,2026-08-22
+GRIN,VanEck India Growth Leaders ETF,ASX,etf,VanEck,equity,,2026-08-22
+GOAT,VanEck Morningstar Intl Wide Moat ETF,ASX,etf,VanEck,,,2026-08-22
+MHOT,VanEck Morningstar Wide Moat (AUD H) ETF,ASX,etf,VanEck,,,2026-08-22
+MOAT,VanEck Morningstar Wide Moat ETF,ASX,etf,VanEck,,,2026-08-22
+GRNV,VanEck MSCI AUS Sust Eq ETF,ASX,etf,VanEck,equity,,2026-08-22
+AQTY,VanEck MSCI Australian Quality Plus ETF,ASX,etf,VanEck,equity,,2026-08-28
+GWTH,VanEck MSCI Intl Growth ETF,ASX,etf,VanEck,equity,,2026-08-22
+QHAL,VanEck MSCI Intl Quality (AUD Hdg) ETF,ASX,etf,VanEck,equity,,2026-08-22
+QUAL,Vaneck Msci International Quality Etf,ASX,etf,VanEck,equity,,2026-08-22
+QHSM,VanEck MSCI Intl Sm Com Qual (AUD H) ETF,ASX,etf,VanEck,equity,,2026-08-22
+QSML,VanEck MSCI Intl Sm Com Qual ETF,ASX,etf,VanEck,equity,,2026-08-22
+ESGI,VanEck MSCI Intl Sust Eq ETF,ASX,etf,VanEck,equity,,2026-08-22
+HVLU,VanEck MSCI Intl Val (AUD H) ETF,ASX,etf,VanEck,equity,,2026-08-22
+VLUE,VanEck MSCI Intl Val ETF,ASX,etf,VanEck,equity,,2026-08-22
+EMKT,VanEck MSCI Mltfac EmMkts Eq ETF,ASX,etf,VanEck,equity,,2026-08-22
+MVE,VanEck S&P/ASX MidCap ETF,ASX,etf,VanEck,equity,,2026-08-22
+MVS,VanEck Small Coms Masters ETF,ASX,etf,VanEck,equity,,2026-08-22
+URAN,VanEck Uranium and Energy Innovation ETF,ASX,etf,VanEck,industrial metals,,2026-08-22
+ESPO,VanEck Video Gaming & eSprts ETF,ASX,etf,VanEck,,,2026-08-22
+VEU,Vanguard All-World ex-US Shares ETF,ASX,etf,Vanguard,equity,,2026-08-22
+VACF,Vanguard Australian Corp Fxd Intr ETF,ASX,etf,Vanguard,,,2026-08-22
+VAF,Vanguard Australian Fixed Interest ETF,ASX,etf,Vanguard,,,2026-08-22
+VGB,Vanguard Australian Government Bond ETF,ASX,etf,Vanguard,fixed income,,2026-08-22
+VAP,Vanguard Australian Property Secs ETF,ASX,etf,Vanguard,property,,2026-08-22
+VHY,Vanguard Australian Shares High Yld ETF,ASX,etf,Vanguard,equity,,2026-08-22
+VAS,Vanguard Australian Shares ETF,ASX,etf,Vanguard,equity,,2026-08-22
+VDAL,Vanguard Diversified All Growth Idx ETF,ASX,etf,Vanguard,multi-asset,,2026-08-22
+VDBA,Vanguard Diversified Balanced ETF,ASX,etf,Vanguard,multi-asset,,2026-08-22
+VDCO,Vanguard Diversified Conservative ETF,ASX,etf,Vanguard,multi-asset,,2026-08-22
+VDGR,Vanguard Diversified Growth ETF,ASX,etf,Vanguard,multi-asset,,2026-08-22
+VDHG,Vanguard Diversified High Growth ETF,ASX,etf,Vanguard,multi-asset,,2026-08-22
+VDIF,Vanguard Diversified Income ETF,ASX,etf,Vanguard,multi-asset,,2026-08-22
+VETH,Vanguard Ethically Cnscs Aust Shrs ETF,ASX,etf,Vanguard,,,2026-08-22
+VEFI,Vanguard Etclly Cons Gbl Aggt Bd H ETF,ASX,etf,Vanguard,fixed income,,2026-08-22
+VESG,Vanguard Etclly Cons Intl Shrs ETF,ASX,etf,Vanguard,,,2026-08-22
+VAE,Vanguard FTSE Asia ex Japan Shrs ETF,ASX,etf,Vanguard,equity,,2026-08-22
+VGE,Vanguard FTSE Emerging Markets Shrs ETF,ASX,etf,Vanguard,equity,,2026-08-22
+VEQ,Vanguard FTSE Europe Shares ETF,ASX,etf,Vanguard,equity,,2026-08-22
+VBND,Vanguard Global Aggregate Bd Hdg ETF,ASX,etf,Vanguard,fixed income,,2026-08-22
+VBLD,Vanguard Global Infrastructure ETF,ASX,etf,Vanguard,infrastructure,,2026-08-22
+VMIN,Vanguard Global Minimum Volatility ETF,ASX,etf,Vanguard,,,2026-08-22
+VTEK,Vanguard Global Technology Index ETF,ASX,etf,Vanguard,technology,,2026-08-22
+VTKH,Vanguard Global Technology Index (H) ETF,ASX,etf,Vanguard,technology,,2026-08-22
+VVLU,Vanguard Global Value Equity Active ETF,ASX,etf,Vanguard,equity,,2026-08-22
+VCF,Vanguard Intl Credit Secs (Hdg) ETF,ASX,etf,Vanguard,fixed income,,2026-08-22
+VIF,Vanguard Intl Fxd Intr (Hdg) ETF,ASX,etf,Vanguard,,,2026-08-22
+VIHY,Vanguard InternationalSharesHighYieldETF,ASX,etf,Vanguard,,,2026-08-22
+VLC,Vanguard MSCI Australian Large Coms ETF,ASX,etf,Vanguard,equity,,2026-08-22
+VSO,Vanguard MSCI Australian Small Coms ETF,ASX,etf,Vanguard,equity,,2026-08-22
+VGS,Vanguard MSCI Intl ETF,ASX,etf,Vanguard,equity,,2026-08-22
+VGAD,Vanguard MSCI Intl (Hdg) ETF,ASX,etf,Vanguard,equity,,2026-08-22
+VISM,Vanguard MSCI International SC ETF,ASX,etf,Vanguard,equity,,2026-08-22
+V500,Vanguard S&P 500 US Shares Index ETF,ASX,etf,Vanguard,equity,,2026-08-22
+V5AH,Vanguard S&P 500 US Shares Index H ETF,ASX,etf,Vanguard,equity,,2026-08-22
+VTS,Vanguard US Total Market Shares ETF,ASX,etf,Vanguard,equity,,2026-08-22
+VNGS,Vaughan Nelson Global Equity SMID Fund - Active ETF,ASX,etf,Vaughan Nelson,equity,,2026-08-28
+V1AC,Vinva Global Alpha Fund - Active ETF,ASX,etf,Vinva,equity,,2026-08-28
+WCMQ,WCM Quality Glbl Gr Fund-Active ETF,ASX,etf,WCM,equity,,2026-08-22
+FEIF,Western Asset Enhanced Income Fund - Active ETF,ASX,etf,Western Asset,fixed income,,2026-08-28
+ZILR,Ziller Global Fund Active ETF,ASX,etf,Ziller,,,2026-08-22
