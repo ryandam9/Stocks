@@ -692,7 +692,7 @@ shell wrappers do not expose:
 uv run src/fetch_prices.py  --exchange US --instrument-type stocks \
     --period 400 --batch-size 100 --min-success-ratio 0.95 --log-file logs/us.log
 uv run src/analysis.py      --exchange US --instrument-type stocks [--allow-stale]
-scripts/refresh_universe.py --exchange US --instrument-type stocks [--dry-run]
+uv run scripts/refresh_universe.py --exchange US --instrument-type stocks [--dry-run]
 uv run src/config.py        US stocks db_path       # resolve any config value
 ```
 
@@ -1017,8 +1017,8 @@ writes it. Membership changes on a developer machine, against the exchange's
 own listings, and lands as a reviewable diff:
 
 ```bash
-scripts/refresh_universe.py --exchange US  --instrument-type stocks --dry-run
-scripts/refresh_universe.py --exchange ASX --instrument-type etf
+uv run scripts/refresh_universe.py --exchange US  --instrument-type stocks --dry-run
+uv run scripts/refresh_universe.py --exchange ASX --instrument-type etf
 git diff config/                # review
 git commit && ./scripts/build_image.sh --push
 ```
@@ -1039,7 +1039,7 @@ classification arrive together and no provider lookup is needed. The company
 directory can only say which codes exist, never which of them are funds.
 
 ```bash
-scripts/refresh_universe.py --exchange ASX --instrument-type etf \
+uv run scripts/refresh_universe.py --exchange ASX --instrument-type etf \
     --from-file ~/Downloads/asx-investment-products-aug-2026.pdf --dry-run
 ```
 

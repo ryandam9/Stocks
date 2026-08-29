@@ -19,15 +19,15 @@ which are funds. So an ASX refresh drops what the directory no longer lists
 and asks the price provider about each *new* code before letting it into a
 fund universe. That lookup happens here, once, rather than on every run.
 
-    scripts/refresh_universe.py --exchange US  --instrument-type stocks
-    scripts/refresh_universe.py --exchange ASX --instrument-type etf --dry-run
+    uv run scripts/refresh_universe.py --exchange US  --instrument-type stocks
+    uv run scripts/refresh_universe.py --exchange ASX --instrument-type etf --dry-run
 
 If the exchange blocks the download -- the ASX does, intermittently -- save
 the file by hand and pass --from-file. That also accepts the ASX Investment
 Products report, the monthly PDF listing exchange-traded products and nothing
 else:
 
-    scripts/refresh_universe.py --exchange ASX --instrument-type etf \
+    uv run scripts/refresh_universe.py --exchange ASX --instrument-type etf \
         --from-file asx-investment-products-aug-2026.pdf --dry-run
 
 which is the better ASX source when you can get it: the company directory
@@ -38,8 +38,15 @@ import datetime
 import os
 import sys
 
-import click
-import pandas as pd
+try:
+    import click
+    import pandas as pd
+except ImportError as exc:  # pragma: no cover - depends on how it was invoked
+    raise SystemExit(
+        f"{exc.name} is missing: this reads the project's own modules, so it "
+        f"needs the project environment.\n"
+        f"    uv run scripts/refresh_universe.py --exchange US --instrument-type stocks"
+    ) from exc
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
 
