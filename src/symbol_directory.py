@@ -262,3 +262,148 @@ def fetch_asx_directory(timeout: int = 60, text: str | None = None) -> pd.DataFr
             in with ``--from-file``.
     """
     return parse_asx_directory(text if text is not None else _download(ASX_DIRECTORY_URL, timeout))
+
+
+# ------------------------------------- ASX investment products report
+
+# A row in the report's ETP tables reads as a code, the fund's name, then
+# columns of figures. The name ends where the numbers begin.
+#
+# An ASX code is three to six alphanumerics, not three or four letters:
+# A200, 1GOV and 28BB carry digits, and ETPMAG and PMGOLD are six long.
+# Letters-only-and-four dropped 32 funds from a 452-row report, and did it
+# under the caller's drop guard, so it would have been written.
+_REPORT_ROW = re.compile(r"^([A-Z0-9]{3,6})\s+(.+)$")
+# Where the statistics columns begin. Deliberately not "the first digit": a
+# fund name carries numbers of its own -- "Betashares Australia 200 ETF",
+# "VanEck 1-5 Year Australian Govt Bd ETF" -- and cutting at those truncated
+# both to "Betashares Australia" and "VanEck". A column figure is a money or
+# percentage value, so it has a decimal point or a percent sign; a number
+# inside a fund's name has neither.
+_FIRST_FIGURE = re.compile(r"\s(?=\(?-?\$?[\d,]*\d\.\d|\(?-?\$?[\d,]*\d%)")
+
+# Words that head a line in the report but can never be an ASX code. Kept
+# deliberately short: USD and AUD look like column labels and are real funds
+# (BetaShares US Dollar ETF trades as ASX:USD), and excluding a word that is
+# also a ticker loses a fund silently. A stray heading that slips through
+# instead shows up as an addition in the diff, where it is seen and removed.
+_REPORT_NON_CODES = {
+    "TOTAL",
+    "FUNDS",
+    "CODE",
+    "NAME",
+    "MARKET",
+    "MONTH",
+    "REPORT",
+    "PAGE",
+    # ASX Limited trades as ASX:ASX, but it is a company and so never appears
+    # in a report of exchange-traded products. Here it is only ever the first
+    # word of the document's own title.
+    "ASX",
+}
+
+
+# At most this many continuation lines are pulled into one row. A section
+# heading has no figures either, and without a limit it would swallow the page
+# beneath it looking for some.
+_MAX_WRAPPED_LINES = 2
+
+
+def _unwrap(text: str):
+    """Yield report lines with wrapped rows rejoined.
+
+    A long fund name wraps in the PDF's table and takes the row's figures onto
+    the next line -- "BBFD Betashares Geared Short US Treasury Bond Currency
+    Hedged Complex" then "ETF 168.0 78.0 0.68%". Parsed line by line, the
+    first half has no figures and the second half has no code, so the fund
+    disappears. Lines are therefore joined until they carry a figure.
+
+    A buffer that does not itself begin with a code is a heading, and is
+    abandoned rather than extended. Without that, the column header "($m)
+    Turnover MER" -- which has no figures either -- absorbs the first fund
+    underneath it and that fund is lost.
+    """
+    buffer = ""
+    joined = 0
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if buffer and _REPORT_ROW.match(buffer):
+            buffer = f"{buffer} {line}"
+            joined += 1
+        else:
+            buffer, joined = line, 0
+        if _FIRST_FIGURE.search(buffer) or joined >= _MAX_WRAPPED_LINES:
+            yield buffer
+            buffer, joined = "", 0
+    if buffer:
+        yield buffer
+
+
+def parse_asx_report_text(text: str) -> pd.DataFrame:
+    """ASX codes and fund names out of the Investment Products report.
+
+    The ASX publishes this monthly as a PDF, and it is the only list that is
+    *only* exchange-traded products -- the company directory carries every
+    quoted code without marking which are funds. That makes it the right
+    source for an ETF universe and the wrong shape for a machine: there is no
+    CSV, so the rows are read out of the extracted text.
+
+    Deliberately loose about the columns and strict about the code, because
+    the report's layout changes between months while an ASX code does not.
+    Anything it cannot read is simply not returned, which the caller's drop
+    guard then refuses to act on.
+
+    Raises:
+        ValueError: nothing in the text looked like a product row.
+    """
+    rows = []
+    for line in _unwrap(text):
+        match = _REPORT_ROW.match(line)
+        if not match:
+            continue
+        code, rest = match.group(1), match.group(2).strip()
+        # A run of digits is a figure that happens to start a line, not a code.
+        if code in _REPORT_NON_CODES or not any(c.isalpha() for c in code):
+            continue
+        # Cut the name where the figures start. A row with no figures at all
+        # is not a product: the report is a statistics table, and every ETP
+        # carries a market cap. This is what stops the document's own title,
+        # "ASX Investment Products", entering the universe as ticker ASX.
+        figure = _FIRST_FIGURE.search(rest)
+        if figure is None:
+            continue
+        name = rest[: figure.start()].strip(" .,-")
+        # A fund name starts with a letter. "TOTAL 402 products" does not, and
+        # a heading is otherwise shaped exactly like a row.
+        if len(name) < 4 or not name[:1].isalpha():
+            continue
+        rows.append({"ticker": code, "name": name, "exchange": "ASX"})
+
+    frame = pd.DataFrame(rows)
+    if frame.empty:
+        raise ValueError(
+            "ASX report: no product rows found. Check the file is the "
+            "Investment Products report and that its text extracted."
+        )
+    return frame.drop_duplicates(subset=["ticker"], keep="first").reset_index(drop=True)
+
+
+def read_pdf_text(path: str) -> str:
+    """Extract every page's text from a PDF.
+
+    pypdf is imported here rather than required by the project: this runs on a
+    developer machine before an image build, and the container has no business
+    carrying a PDF parser.
+    """
+    try:
+        from pypdf import PdfReader
+    except ImportError as exc:  # pragma: no cover - depends on the machine
+        raise SystemExit(
+            "Reading the ASX report needs pypdf, which is not a project "
+            "dependency because the pipeline never reads a PDF.\n"
+            "    uv pip install pypdf     (or: pip install pypdf)"
+        ) from exc
+
+    return "\n".join(page.extract_text() or "" for page in PdfReader(path).pages)

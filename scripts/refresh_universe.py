@@ -23,7 +23,15 @@ fund universe. That lookup happens here, once, rather than on every run.
     scripts/refresh_universe.py --exchange ASX --instrument-type etf --dry-run
 
 If the exchange blocks the download -- the ASX does, intermittently -- save
-the file by hand and pass --from-file.
+the file by hand and pass --from-file. That also accepts the ASX Investment
+Products report, the monthly PDF listing exchange-traded products and nothing
+else:
+
+    scripts/refresh_universe.py --exchange ASX --instrument-type etf \
+        --from-file asx-investment-products-aug-2026.pdf --dry-run
+
+which is the better ASX source when you can get it: the company directory
+says which codes exist and never which of them are funds.
 """
 
 import datetime
@@ -40,6 +48,8 @@ from symbol_directory import (  # noqa: E402
     US_EXCHANGES,
     fetch_asx_directory,
     fetch_symbol_directory,
+    parse_asx_report_text,
+    read_pdf_text,
 )
 from universe import (  # noqa: E402
     UNIVERSE_COLUMNS,
@@ -63,6 +73,11 @@ def _read(path: str) -> str:
         return handle.read()
 
 
+def is_asx_report(from_file: str | None) -> bool:
+    """Whether the supplied file is the ASX Investment Products report."""
+    return bool(from_file) and from_file.lower().endswith(".pdf")
+
+
 def fetch_directory(exchange: str, from_file: str | None) -> pd.DataFrame:
     """The exchange's own list of what is currently quoted."""
     if exchange in US_EXCHANGES:
@@ -71,6 +86,8 @@ def fetch_directory(exchange: str, from_file: str | None) -> pd.DataFrame:
             other = from_file.replace("nasdaqlisted", "otherlisted")
             return fetch_symbol_directory(nasdaq_text=_read(from_file), other_text=_read(other))
         return fetch_symbol_directory()
+    if is_asx_report(from_file):
+        return parse_asx_report_text(read_pdf_text(from_file))
     return fetch_asx_directory(text=_read(from_file) if from_file else None)
 
 
@@ -100,10 +117,18 @@ def classify_new_asx(tickers: list[str]) -> dict[str, str]:
 @click.option("--exchange", required=True)
 @click.option("--instrument-type", required=True)
 @click.option("--from-file", type=click.Path(exists=True), help="A directory file saved by hand")
+@click.option(
+    "--trust-file",
+    is_flag=True,
+    help="Treat every row in --from-file as this instrument type, skipping the provider lookup "
+    "(implied for the ASX Investment Products PDF)",
+)
 @click.option("--dry-run", is_flag=True, help="Report the change without writing it")
 @click.option("--force", is_flag=True, help="Write even if the drop guard trips")
-def main(exchange, instrument_type, from_file, dry_run, force):
+def main(exchange, instrument_type, from_file, trust_file, dry_run, force):
     exchange = exchange.upper()
+    if trust_file and not from_file:
+        raise SystemExit("--trust-file only means something with --from-file")
     cfg = load_config(exchange, instrument_type)
     path = cfg.bundled_ticker_file
     default_type = default_asset_type_for(cfg.instrument_type)
@@ -111,8 +136,18 @@ def main(exchange, instrument_type, from_file, dry_run, force):
     existing = load_universe(path, default_asset_type=default_type)
     print(f"{path}: {len(existing)} tickers")
 
+    if is_asx_report(from_file):
+        # Every row in that report is an exchange-traded product, which is the
+        # whole reason to prefer it over the company directory. Confirming
+        # that with a provider lookup would only add a way to fail.
+        trust_file = True
+        print("reading the ASX Investment Products report (every row is an ETP)")
+
     directory = fetch_directory(exchange, from_file)
     print(f"exchange directory: {len(directory)} listings")
+    if is_asx_report(from_file):
+        for row in directory.head(3).itertuples():
+            print(f"    e.g. {row.ticker:<8} {row.name[:52]}")
 
     if exchange in US_EXCHANGES:
         wanted = {e.upper() for e in US_EXCHANGES[exchange]}
@@ -135,7 +170,12 @@ def main(exchange, instrument_type, from_file, dry_run, force):
         )
 
     # Which of the new listings belong in *this* universe.
-    if exchange in US_EXCHANGES:
+    if trust_file:
+        # The file is the list, not a whole-market directory: an ETP report,
+        # or a hand-built one. Asking the provider to confirm what the file
+        # already asserts would only add a way for the run to fail.
+        added, skipped, unresolved = candidates, 0, []
+    elif exchange in US_EXCHANGES:
         # The directory classifies them itself.
         keep = set(directory[directory["asset_type"] == default_type]["ticker"]) & set(candidates)
         added = sorted(keep)
