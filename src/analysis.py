@@ -162,6 +162,41 @@ def load_price_data(
     return df.sort_values(["ticker", "stock_price_date"], kind="mergesort")
 
 
+# A dataset is only as new as the session most of its tickers reached. The
+# provider does not publish them all at once: on 2026-08-29, ten of 450 ASX
+# ETFs carried Friday's close and 440 stopped at Thursday's, so the
+# dataset-wide maximum announced "Friday" for a file that was Thursday's
+# everywhere it mattered.
+#
+# That maximum is not only a wrong label, it moves the numbers. Windows anchor
+# on it, so a 1-month window opened a day later than the data supported and
+# then closed on Thursday anyway -- the ticker had no Friday print -- leaving
+# every window a day short at the closing end and comparing against a
+# different opening day than a live quote would.
+#
+# Half is a deliberately blunt threshold. The failure it exists to catch is a
+# handful of tickers dragging the date forward, not a near-even split, and a
+# tighter bar would start discarding genuinely fresh sessions the day a few
+# tickers are delisted or halted.
+DATASET_COVERAGE = 0.5
+
+
+def dataset_as_of(df: pd.DataFrame) -> pd.Timestamp:
+    """The newest session at least half the tickers actually reached.
+
+    Falls back to the newest row present when nothing clears the bar, so a
+    tiny or single-ticker dataset still screens.
+    """
+    last_dates = df.groupby("ticker", sort=False)["stock_price_date"].max()
+    needed = max(1, int(len(last_dates) * DATASET_COVERAGE))
+
+    # Counted newest-first and accumulated, so each entry is "tickers whose
+    # history reaches at least this date".
+    reaching = last_dates.value_counts().sort_index(ascending=False).cumsum()
+    covered = reaching[reaching >= needed]
+    return covered.index[0] if len(covered) else last_dates.max()
+
+
 def assert_data_is_fresh(
     latest_date: pd.Timestamp, max_age_days: int, allow_stale: bool = False
 ) -> int:
@@ -251,24 +286,28 @@ def select_window(df: pd.DataFrame, cutoff: pd.Timestamp, return_basis: str) -> 
 
 
 def window_start(df: pd.DataFrame, cutoff: pd.Timestamp, return_basis: str) -> pd.Series:
-    """The date each row's ticker opens its window on, aligned to ``df.index``.
+    """The session each row's ticker opens its window on, aligned to ``df.index``.
 
     Split out of :func:`select_window` so the published price history can keep
-    exactly the sessions the screen measured over. A calendar cutoff is not
-    the same set: under "google_finance" a window whose anchor falls on a
-    holiday opens on the session *before* it, and a chart cut at the calendar
-    date would omit the very close the percentage was measured from.
+    exactly the sessions the screen measured over -- an actual session, not
+    the calendar anchor. Under "google_finance" a window whose anchor falls on
+    a holiday opens on the session *before* it, and a chart cut at the
+    calendar date would omit the very close the percentage came from.
     """
-    if return_basis != RETURN_BASIS_GOOGLE_FINANCE:
+    if return_basis == RETURN_BASIS_GOOGLE_FINANCE:
+        side = df[df["stock_price_date"] <= cutoff]
+        pick = "max"
+    else:
+        # "robust" opens on the first session inside the window instead.
+        side = df[df["stock_price_date"] >= cutoff]
+        pick = "min"
+
+    if side.empty:
         return pd.Series(cutoff, index=df.index)
 
-    prior = df[df["stock_price_date"] <= cutoff]
-    if prior.empty:
-        return pd.Series(cutoff, index=df.index)
-
-    # Tickers listed after the anchor have no prior session; they keep the
-    # plain cutoff and are dropped later by the coverage rule anyway.
-    starts = prior.groupby("ticker", sort=False)["stock_price_date"].max()
+    # Tickers with nothing on their side of the anchor keep the plain cutoff
+    # and are dropped later by the coverage rule anyway.
+    starts = side.groupby("ticker", sort=False)["stock_price_date"].agg(pick)
     return df["ticker"].map(starts).fillna(cutoff)
 
 
@@ -442,9 +481,13 @@ def _growth_output_path(eod_path: str, suffix: str) -> str:
     return f"{stem}{suffix}{extension or '.csv'}"
 
 
-def _tail_note(tail_days: int) -> str:
-    """How the daily tail is described in a run's output."""
-    return f" + last {tail_days}d daily" if tail_days > 0 else ""
+def _tail_note(windows: Sequence[dict]) -> str:
+    """How the exemptions are described in a run's output."""
+    tail_days = daily_tail_days(windows)
+    parts = [f"last {tail_days}d daily"] if tail_days else []
+    if windows:
+        parts.append("window opens")
+    return f" + {' + '.join(parts)}" if parts else ""
 
 
 def daily_tail_days(windows: Sequence[dict]) -> int:
@@ -468,7 +511,7 @@ def daily_tail_days(windows: Sequence[dict]) -> int:
 def _sample_price_history(
     combined: pd.DataFrame,
     sampling: str,
-    tail_days: int = 0,
+    windows: Sequence[dict] = (),
     return_basis: str = RETURN_BASIS_GOOGLE_FINANCE,
 ) -> pd.DataFrame:
     """Thin published price history down to one row per ticker per period.
@@ -482,16 +525,23 @@ def _sample_price_history(
     Keeping each period's last session also guarantees the series ends on the
     newest close, which is the point a chart is read from.
 
-    The last ``tail_days`` are exempt and keep every session, so a short
-    window is charted at the resolution it was measured at. The tail is taken
-    with the same rule the screen uses -- :func:`window_start`, not a plain
-    calendar cutoff -- so the first plotted point *is* the screen's opening
-    close rather than the next one after it.
+    Two kinds of session survive sampling whatever the mode, because a chart
+    that omits either contradicts the screen it illustrates:
+
+    * every session inside the longest day-based window, so a 7-day window is
+      charted at the resolution it was measured at;
+    * the session each configured window *opens* on, so the first point of
+      every chart is the close its percentage was measured from.
+
+    The second is what a month-scale window needs. Weekly sampling put SLVM's
+    1-month chart at 31 July while the screen opened it on 28 July, and the
+    card showed +30.99% beside its own "+31.58%" -- one number computed off
+    the plotted line, the other off the real endpoint.
 
     Args:
         sampling: one of :data:`config.PRICE_HISTORY_SAMPLING`.
-        tail_days: recent days to keep daily, from :func:`daily_tail_days`.
-        return_basis: how the tail resolves its opening session, matching the
+        windows: the configured windows, which decide both exemptions.
+        return_basis: how a window resolves its opening session, matching the
             screen's own ``analysis.return_basis``.
 
     Returns:
@@ -515,12 +565,19 @@ def _sample_price_history(
     last = combined.groupby(["ticker", period], sort=False)["stock_price_date"].transform("max")
     keep = dates.eq(last)
 
+    # Anchored on the newest session in the frame rather than each ticker's
+    # own last print, so every ticker's exemptions span the same calendar days
+    # the screen's windows did.
+    latest = dates.max()
+
+    tail_days = daily_tail_days(windows)
     if tail_days > 0:
-        # Measured from the newest session in the frame rather than each
-        # ticker's own last print, so every ticker's tail spans the same
-        # calendar days the screen's window did.
-        cutoff = dates.max() - pd.Timedelta(days=tail_days)
+        cutoff = latest - pd.Timedelta(days=tail_days)
         keep |= dates.ge(window_start(combined, cutoff, return_basis))
+
+    for window in windows:
+        opens = window_start(combined, window_cutoff(latest, window), return_basis)
+        keep |= dates.eq(opens)
 
     return combined[keep]
 
@@ -570,7 +627,7 @@ def build_universe_history(
     latest_date: pd.Timestamp,
     sampling: str = "weekly",
     months: int = UNIVERSE_HISTORY_MONTHS,
-    tail_days: int = 0,
+    windows: Sequence[dict] = (),
     return_basis: str = RETURN_BASIS_GOOGLE_FINANCE,
 ) -> str:
     """Write a trailing-``months`` sampled price history for the whole universe.
@@ -595,7 +652,7 @@ def build_universe_history(
     cutoff = latest_date - pd.DateOffset(months=months)
 
     history = df[df["stock_price_date"] >= cutoff]
-    sampled = _sample_price_history(history, sampling, tail_days, return_basis)
+    sampled = _sample_price_history(history, sampling, windows, return_basis)
 
     # adj_close is absent from price files written before it was recorded.
     # Emit the column regardless so the published table's schema does not
@@ -611,7 +668,7 @@ def build_universe_history(
     atomic_write_csv(sampled, output_path)
     tickers = sampled["ticker"].nunique() if not sampled.empty else 0
     print(
-        f"\nUniverse history ({sampling}{_tail_note(tail_days)}, {months}m): "
+        f"\nUniverse history ({sampling}{_tail_note(windows)}, {months}m): "
         f"{len(sampled):,} rows for {tickers:,} tickers -> {output_path}"
     )
     return output_path
@@ -624,7 +681,7 @@ def build_combined_growth(
     abbreviations: dict[str, str],
     run_id: str = "",
     sampling: str = "weekly",
-    tail_days: int = 0,
+    windows: Sequence[dict] = (),
     return_basis: str = RETURN_BASIS_GOOGLE_FINANCE,
 ) -> str:
     """Write sampled price history for every ticker that grew in any window.
@@ -674,7 +731,7 @@ def build_combined_growth(
 
     # Sample before formatting the date: the sampler needs real datetimes.
     daily_rows = len(combined)
-    combined = _sample_price_history(combined, sampling, tail_days, return_basis)
+    combined = _sample_price_history(combined, sampling, windows, return_basis)
 
     combined["stock_price_date"] = combined["stock_price_date"].dt.strftime("%Y-%m-%d")
 
@@ -687,7 +744,7 @@ def build_combined_growth(
     atomic_write_csv(combined, output_path)
     kept = f"{len(combined) / daily_rows:.0%} of daily" if daily_rows else "empty"
     print(
-        f"\nCombined growth history ({sampling}{_tail_note(tail_days)}): "
+        f"\nCombined growth history ({sampling}{_tail_note(windows)}): "
         f"{len(combined):,} rows for {len(summary):,} tickers, {kept} -> {output_path}"
     )
     return output_path
@@ -736,7 +793,8 @@ def analyze_stocks(
 
     cfg.ensure_universe()
     df = load_price_data(cfg.eod_csv, settings.return_basis)
-    latest_date = df["stock_price_date"].max()
+    latest_date = dataset_as_of(df)
+    newest_row = df["stock_price_date"].max()
 
     # Lineage: record which fetch produced the price file being screened, so a
     # surprising screen can be traced back to its source dataset.
@@ -784,6 +842,19 @@ def analyze_stocks(
     print(f"Run {run_id}")
     print(f"Loaded {len(df):,} rows for {df['ticker'].nunique():,} tickers")
     print(f"Data as of {latest_date:%Y-%m-%d} ({age_days} day(s) old)")
+    if newest_row > latest_date:
+        # Not an error: the provider publishes tickers at different times, and
+        # screening the session most of them reached is the point. Logged
+        # because it is otherwise invisible, and it explains why a screen
+        # figure trails a live quote by a day.
+        ahead = int(
+            (df.groupby("ticker", sort=False)["stock_price_date"].max() > latest_date).sum()
+        )
+        total = df["ticker"].nunique()
+        print(
+            f"  {newest_row:%Y-%m-%d} exists for {ahead} of {total} tickers; "
+            f"screening to {latest_date:%Y-%m-%d}, which the rest reach"
+        )
     if settings.return_basis == RETURN_BASIS_GOOGLE_FINANCE:
         print(
             "Returns use the google_finance basis: single closes, the last session "
@@ -854,7 +925,7 @@ def analyze_stocks(
             abbreviations,
             run_id,
             sampling=settings.price_history_sampling,
-            tail_days=daily_tail_days(settings.windows),
+            windows=settings.windows,
             return_basis=settings.return_basis,
         )
         outputs["combined"] = {"path": combined_path}
@@ -879,7 +950,7 @@ def analyze_stocks(
                 cfg.eod_csv,
                 latest_date,
                 sampling=settings.price_history_sampling,
-                tail_days=daily_tail_days(settings.windows),
+                windows=settings.windows,
                 return_basis=settings.return_basis,
             ),
             "table": cfg.universe_history_table,

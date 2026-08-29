@@ -500,6 +500,24 @@ aws cloudwatch describe-alarms --region ap-southeast-2 \
   --alarm-name-prefix stocks --query 'MetricAlarms[].[AlarmName,StateValue]' --output text
 ```
 
+### How fresh "as of" really is
+
+`data_as_of` is **not** the newest row in the file. It is the newest session at
+least half the tickers reached.
+
+The provider does not publish every ticker at once. On 29 Aug 2026, ten of 450
+ASX ETFs carried Friday's close and 440 stopped at Thursday's — so the
+dataset-wide maximum announced Friday for a file that was Thursday's everywhere
+it mattered. That is not only a wrong label: windows anchor on it, so a 1-month
+window opened a day later than the data supported and then closed on Thursday
+anyway, because the ticker had no Friday print.
+
+Each row also carries `staleness_days`, how far that ticker's own newest print
+is behind the screen date. Usually `0`; a `1` means the provider had not
+published that ticker's latest session when the fetch ran, and is the reason a
+figure here can trail a live quote by a day. The success email says so
+explicitly when the two dates disagree.
+
 A newly created `no-upload-in-24h` alarm sits in `ALARM` until the first
 successful run, which is correct rather than a fault: it treats missing data as
 breaching, because "no logs at all" is precisely the condition it exists to
@@ -1104,6 +1122,14 @@ ends on the newest close. Measured on the US universe:
 | `semi_monthly` | 25 | 43,984 | ~4 MB |
 | `month_end` | 13 | 22,870 | ~2.5 MB |
 | off | — | — | 0.86 MB |
+
+**Two kinds of session always survive sampling.** Every session inside the
+longest day-based window, and the session each configured window *opens* on.
+The second is what a month-scale chart needs: weekly sampling put one ETF's
+1-month chart at 31 July while the screen opened it on 28 July, and the card
+showed +30.99% beside its own "+31.58%" — one number computed off the plotted
+line, the other off the real endpoint. Keeping the opening session costs one
+row per window per ticker and makes the two agree by construction.
 
 **The most recent days are exempt.** Sampling is what a chart needs for a year
 of history and exactly what it must not do for a week of it. Over a 7-day

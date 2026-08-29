@@ -629,6 +629,13 @@ renders the HTML and a plain-text alternative, and calls `ses:SendEmail`. It is
 zipped at plan time by the `hashicorp/archive` provider, so the source stays a
 readable `.py` in the repository.
 
+**Freshness.** The mail reports the run's `data_as_of` — the session the screen
+ran to — rather than the newest `stock_price_date` in the file, and says so in a
+highlighted note when the two differ. A handful of tickers running a session
+ahead of the rest must not make the database look fresher than anything in it
+was measured to, and the note is what stops a reader treating a one-day lag
+behind a live quote as a broken pipeline.
+
 **What the message carries.** The S3 event names a bucket, a key, a size and a
 time. That is enough to know a run finished and not enough to know what it
 produced, so the function downloads the object to `/tmp` and opens it read-only:
