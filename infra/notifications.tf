@@ -9,10 +9,10 @@
 # success on exactly the night there is no new data. Watching the object means
 # the email cannot be sent unless the database is really in the bucket.
 #
-# One email per database, not one per night: the two runs are 2h15m apart
-# (07:15 and 09:30 Melbourne), so a combined message would have to hold the
-# ASX result back until the US run finished, and would say nothing at all on a
-# night when the second task never started.
+# One email per database, not one per night: the three runs span 2h15m
+# (07:15, 07:45 and 09:30 Melbourne), so a combined message would have to hold
+# the ASX result back until the US run finished, and would say nothing at all
+# on a night when a later task never started.
 #
 # S3 event -> EventBridge rule -> lambda -> SES -> inbox.
 
@@ -42,7 +42,7 @@ resource "aws_cloudwatch_event_rule" "database_published" {
     "detail-type" = ["Object Created"]
     detail = {
       bucket = { name = [var.data_bucket] }
-      # Exactly the two databases this stack publishes. The bucket also holds
+      # Exactly the databases this stack publishes. The bucket also holds
       # nasdaq.db, trading.db and others that predate it; without this key
       # filter every write to any of them would send an email.
       object = { key = [for u in local.universes : u.database] }
@@ -176,7 +176,7 @@ data "aws_iam_policy_document" "notify" {
     actions = ["s3:GetObject"]
     # The mail reports the tables, their row counts and the span of price
     # history, which means opening the file the event announced. Read is all
-    # it ever needs, and only of the two objects this stack publishes.
+    # it ever needs, and only of the objects this stack publishes.
     resources = [
       for u in local.universes : "arn:aws:s3:::${var.data_bucket}/${u.database}"
     ]
@@ -252,8 +252,8 @@ resource "aws_cloudwatch_metric_alarm" "notify_failed" {
   threshold           = 1
   comparison_operator = "GreaterThanOrEqualToThreshold"
 
-  # Errors are published only when there are some, and the function runs twice
-  # a day: nearly every period is legitimately empty.
+  # Errors are published only when there are some, and the function runs once
+  # per universe per day: nearly every period is legitimately empty.
   treat_missing_data = "notBreaching"
 
   alarm_actions = [aws_sns_topic.alerts.arn]

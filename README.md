@@ -342,17 +342,18 @@ scripts remain for host use and produce byte-identical output.
 > check `run_metadata.code_revision` in a published database against your HEAD.
 
 The pipeline runs itself on a schedule in AWS: ECS Fargate in `ap-southeast-2`,
-publishing both databases to S3.
+publishing all three databases to S3.
 
 | | |
 |---|---|
 | ASX | Tue–Sat, **07:15** Melbourne (~7 min) |
+| NSE | Tue–Sat, **07:45** Melbourne (~30 min) |
 | US | Tue–Sat, **09:30** Melbourne (~63 min) |
 
 Tue–Sat because a run screens the *previous* session, so those five days cover
-Monday to Friday. The two differ by two hours because their exchanges settle at
-opposite ends of the Melbourne day — the reasoning, and why 07:00 is wrong for
-US, is in [§5 of the deployment spec](docs/AWS_DEPLOYMENT_SPEC.md).
+Monday to Friday. The times differ because the three exchanges settle at
+different points of the Melbourne day — the reasoning, and why 07:00 is wrong
+for US, is in [§5 of the deployment spec](docs/AWS_DEPLOYMENT_SPEC.md).
 
 Infrastructure lives in [`infra/`](infra) as Terraform. Its
 [README](infra/README.md) covers first-time setup; this section is about
@@ -523,7 +524,7 @@ that a database exists. So success has its own path, and its own delivery:
 | Path | Sends | Volume |
 |---|---|---|
 | SNS `stocks-alerts` | the three failures above | ~0/day |
-| SES, via the `stocks-notify` lambda | `us.db` / `asx.db` reached S3 | ~2/day |
+| SES, via the `stocks-notify` lambda | `us.db` / `asx.db` / `nse.db` reached S3 | ~3/day |
 
 The success mail is triggered by the **S3 object**, not by the ECS task exiting
 0. A task can exit 0 having published nothing — that is the `upload-skipped`
@@ -828,7 +829,7 @@ a one-off:
 uv run src/run.py analyze --exchange US --instrument-type stocks --upload
 ```
 
-The key is the database filename (`us.db`, `asx.db`) at the bucket root. A
+The key is the database filename (`us.db`, `asx.db`, `nse.db`) at the bucket root. A
 prefix works too — `S3_BUCKET=s3://your-bucket/daily` writes `daily/us.db`.
 
 Uploads use `boto3`, not the `aws` CLI, so the container image stays small. In

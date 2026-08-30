@@ -10,13 +10,18 @@ resource "aws_sqs_queue" "scheduler_dlq" {
 resource "aws_scheduler_schedule" "universe" {
   for_each = local.universes
 
-  name        = "stocks-${each.key}"
-  group_name  = "default"
-  state       = var.schedule_enabled ? "ENABLED" : "DISABLED"
-  description = "Daily ${upper(each.key)} screen at 20:00 ${local.timezone}"
+  name       = "stocks-${each.key}"
+  group_name = "default"
+  state      = var.schedule_enabled ? "ENABLED" : "DISABLED"
+  # The cron itself rather than a written-out hour: three universes run at
+  # three different times, and a description that repeats one of them by hand
+  # is a comment that goes stale the first time a schedule moves.
+  description = "Daily ${upper(each.key)} screen -- ${each.value.cron} ${local.timezone}"
 
   # Nothing downstream depends on the exact minute, so let AWS spread the
-  # invocation. Set mode to "OFF" to pin it to 20:00 precisely.
+  # invocation. The windows do not collide: the schedules are 30 minutes apart
+  # at their closest (ASX 07:15, NSE 07:45). Set mode to "OFF" to pin each to
+  # its stated minute.
   flexible_time_window {
     mode                      = "FLEXIBLE"
     maximum_window_in_minutes = 15

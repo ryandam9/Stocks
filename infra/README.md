@@ -81,10 +81,10 @@ the rollout below.
 
 | Phase | Do | Confirm |
 |---|---|---|
-| 1 | `terraform apply` with `schedule_enabled = false` | 43 resources, 0 destroyed |
+| 1 | `terraform apply` with `schedule_enabled = false` | 50 resources, 0 destroyed |
 | 2 | Click **both** SNS confirmation emails AWS sends | Neither subscription is left `PendingConfirmation` |
 | 3 | Push the image: `./scripts/build_image.sh --push` | Image visible in ECR, tagged `git-<sha>` for the commit you pushed |
-| 4 | Run each task by hand — see the `run_task_manually` output | Both exit 0; `us.db`/`asx.db` timestamps move in S3, and a "published" email arrives for each |
+| 4 | Run each task by hand — see the `run_task_manually` output | All three exit 0; `us.db`/`asx.db`/`nse.db` timestamps move in S3, and a "published" email arrives for each |
 | 5 | Force a failure: set a bad `data_bucket`, apply, run a task | **An email actually arrives** |
 | 6 | Set `schedule_enabled = true`, apply | Three consecutive nights green |
 
@@ -114,9 +114,9 @@ schedules stay defined but stop firing.
 | Path | Sends | Volume |
 |---|---|---|
 | SNS `stocks-alerts` | a run broke, or no run happened in 24 h | ~0/day |
-| SES, via the `stocks-notify` lambda | `us.db` / `asx.db` reached S3 | ~2/day |
+| SES, via the `stocks-notify` lambda | `us.db` / `asx.db` / `nse.db` reached S3 | ~3/day |
 
-They are separate because routine success at ~2/day and exceptional failure at
+They are separate because routine success at ~3/day and exceptional failure at
 ~0/day do not belong on one channel: the volume trains you to filter it, and
 the filter then swallows the alerts. The success message is driven by the S3
 object rather than by ECS task completion — a task can exit 0 having published

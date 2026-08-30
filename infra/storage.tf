@@ -17,8 +17,8 @@ resource "aws_s3_bucket_versioning" "data" {
   }
 }
 
-# Bounds what versioning costs. At ~8 MB a day for both databases this is a
-# few cents a month.
+# Bounds what versioning costs. At ~12 MB a day across the three databases
+# (us.db ~8 MB, asx.db ~2.4 MB, nse.db ~1.3 MB) this is a few cents a month.
 resource "aws_s3_bucket_lifecycle_configuration" "data" {
   bucket     = data.aws_s3_bucket.data.id
   depends_on = [aws_s3_bucket_versioning.data]

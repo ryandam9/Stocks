@@ -7,7 +7,7 @@ The time. EventBridge delivers ``$.time`` in UTC and its input transformer
 substitutes values without ever converting them, so a plain SNS target could
 only ever quote "2026-08-25T21:34:50Z" for a database that landed at 07:34 the
 next morning. Everything else in this stack is Melbourne local -- the
-schedules, the runbook's 07:15 and 09:30, the person reading this at
+schedules, the runbook's 07:15, 07:45 and 09:30, the person reading this at
 breakfast -- and the correction is ten hours for half the year and eleven for
 the other half, with the date moving either way.
 

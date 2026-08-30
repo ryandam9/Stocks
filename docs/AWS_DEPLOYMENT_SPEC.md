@@ -4,7 +4,7 @@
 **Date:** 2026-08-23
 **Target account:** supplied via `terraform.tfvars` (not committed)
 **Target region:** `ap-southeast-2` (Sydney)
-**Schedule:** Tue–Sat, `Australia/Melbourne` — ASX 07:15, US 09:30
+**Schedule:** Tue–Sat, `Australia/Melbourne` — ASX 07:15, NSE 07:45, US 09:30
 
 ---
 
@@ -62,21 +62,28 @@ same US run takes 63 minutes on Fargate against 3m42s here. They are kept
 because they are what memory sizing is derived from; runtime and cost come
 from the Fargate measurements instead.
 
-| Stage | US (5750 tickers) | ASX (402 tickers) |
-|---|---|---|
-| `fetch` | 3 m 42 s, **950 MB peak** | 17 s |
-| `analyze` | 5 s, 402 MB peak | 0.3 s |
-| `publish` + upload | ~2 s | ~1 s |
-| **`all`, end to end** | **~4 min** | **~1 min** |
+| Stage | US (5750 tickers) | ASX (402 tickers) | NSE (2531 tickers) |
+|---|---|---|---|
+| `fetch` | 3 m 42 s, **950 MB peak** | 17 s | 1 m 19 s |
+| `analyze` | 5 s, 402 MB peak | 0.3 s | ~15 s |
+| `publish` + upload | ~2 s | ~1 s | ~2 s |
+| **`all`, end to end** | **~4 min** | **~1 min** | **1 m 38 s, 614 MB peak** |
 
 Artefact sizes:
 
-| Artefact | US | ASX |
-|---|---|---|
-| Universe CSV | 1.0 MB (13,135 symbols) | 24 KB (404 symbols) |
-| EOD price CSV | 201 MB | 14 MB |
-| Published database | 884 KB | 48 KB |
-| Container image | 366 MB (shared) | |
+| Artefact | US | ASX | NSE |
+|---|---|---|---|
+| Universe CSV | 1.0 MB (13,135 symbols) | 24 KB (404 symbols) | 230 KB (2,531 symbols) |
+| EOD price CSV | 201 MB | 14 MB | 82 MB |
+| Published database | 884 KB | 48 KB | 1.3 MB |
+| Container image | 366 MB (shared) | | |
+
+The NSE column was measured 2026-08-30 on the same host, against the full
+2,531-symbol universe from `EQUITY_L.csv`. Its peak is a whole-run figure
+(`/usr/bin/time -v` over `all`) rather than a per-stage one, which is what
+§6.2 sizes the task from. The published database is larger than the ASX one
+despite a smaller screen because NSE publishes weekly price history for every
+matched ticker.
 
 These figures predate the removal of the in-run universe sync, which cost 6 s
 on US and 43 s on ASX — the ASX one dominated its ~60 s run, because that
@@ -110,7 +117,8 @@ Two consequences, both of which the design absorbs rather than fights:
 
 Nothing else is affected. There is no Fargate task timeout to exceed, and a US
 run starting at 09:30 and finishing around 10:35 collides with nothing — the
-ASX schedule at 07:15 is an independent task that has already finished.
+ASX schedule at 07:15 and the NSE one at 07:45 are independent tasks that have
+already finished.
 
 ---
 
@@ -213,17 +221,19 @@ flowchart TB
         subgraph Sched["EventBridge Scheduler"]
             SCH1["stocks-us<br/>cron(30 9 ? * TUE-SAT *)<br/>Australia/Melbourne"]
             SCH2["stocks-asx<br/>cron(15 7 ? * TUE-SAT *)<br/>Australia/Melbourne"]
+            SCH3["stocks-nse<br/>cron(45 7 ? * TUE-SAT *)<br/>Australia/Melbourne"]
         end
 
         subgraph VPC["VPC · public subnet · egress-only SG"]
             subgraph ECS["ECS Cluster · Fargate"]
                 T1["Task: US<br/>0.5 vCPU / 4 GB<br/>~63 min"]
                 T2["Task: ASX<br/>0.5 vCPU / 2 GB<br/>~7 min"]
+                T3["Task: NSE<br/>0.5 vCPU / 3 GB<br/>~30 min"]
             end
         end
 
-        S3[("S3 · data bucket<br/>us.db · asx.db")]
-        CWL["CloudWatch Logs<br/>/ecs/stocks/us<br/>/ecs/stocks/asx"]
+        S3[("S3 · data bucket<br/>us.db · asx.db · nse.db")]
+        CWL["CloudWatch Logs<br/>/ecs/stocks/us<br/>/ecs/stocks/asx<br/>/ecs/stocks/nse"]
         ALARM["CloudWatch Alarms<br/>failure · heartbeat"]
         EVR["EventBridge Rule<br/>Task State Change<br/>exitCode != 0"]
         SNS["SNS topic<br/>stocks-alerts"]
@@ -259,11 +269,18 @@ affecting the other.
 | Task | Melbourne local | Days |
 |---|---|---|
 | `stocks-asx` | 07:15 | Tue–Sat |
+| `stocks-nse` | 07:45 | Tue–Sat |
 | `stocks-us` | 09:30 | Tue–Sat |
 
-**Tue–Sat, not Mon–Fri.** A run screens the *previous* session in both markets,
-so Tuesday through Saturday is what covers Monday through Friday. A Monday run
-would re-screen Friday's data; a Sunday one would do nothing new.
+**Tue–Sat, not Mon–Fri.** A run screens the *previous* session in all three
+markets, so Tuesday through Saturday is what covers Monday through Friday. A
+Monday run would re-screen Friday's data; a Sunday one would do nothing new.
+
+The reason is not the same in each case, which matters for NSE. The US session
+that Tuesday's run screens closed *overnight* Melbourne time; the NSE session
+it screens closed the previous *evening* — 20:00 or 21:00 Melbourne, still
+Monday. Different arithmetic, same answer: a Tuesday morning run has Monday's
+close and nothing newer.
 
 ```mermaid
 gantt
@@ -273,20 +290,46 @@ gantt
 
     section Markets
     US session (prev day, ends 06:00-08:00 local) :done, us, 00:00, 7h
+    NSE session (13:30-20:00 local, AEST)         :done, nse, 13:30, 6h30m
     ASX session (10:00-16:00)                     :done, asx, 10:00, 6h
 
     section Pipeline
     ASX run  (~7 min)                             :crit, 07:15, 20m
+    NSE run  (~30 min)                            :crit, 07:45, 30m
     US run   (~63 min)                            :crit, 09:30, 63m
 ```
 
-### 5.1 Why the two differ by two hours
+The NSE bar is the *current* day's session, which opens after all three runs
+have finished. The session that morning's NSE run screened is the one that
+closed at 20:00 the evening before.
 
-The two tasks have opposite constraints, and one time cannot satisfy both.
+### 5.1 Why the three differ
+
+The tasks have different constraints, and one time cannot satisfy all of them.
 
 **ASX at 07:15.** The ASX opens at 10:00 local, so an early run is clear of any
 in-progress session and the newest close is the previous trading day's. Running
 *later* than 10:00 would risk a partial bar for the day in progress.
+
+**NSE at 07:45.** The easy one, because India keeps no daylight saving: only
+Melbourne's clock moves, so the gap is +4:30 (AEST) or +5:30 (AEDT) and never
+the 14–16 hours, shifting from both ends, that makes the US slot delicate.
+
+NSE trades 09:15–15:30 IST with pre-open from 09:00. In Melbourne terms the
+session closes at 20:00 the same evening (21:00 under AEDT) and the next
+pre-open is 13:30 the following afternoon (14:30 AEDT), leaving a wide quiet
+window across the Melbourne morning:
+
+| Period | Melb / IST | 07:45 Melbourne = | After prev. close | Before next pre-open |
+|---|---|---|---|---|
+| Apr–Oct | AEST / IST | 03:15 IST | +11 h 45 m | −5 h 45 m |
+| Oct–Apr | AEDT / IST | 02:15 IST | +10 h 45 m | −6 h 45 m |
+
+Both margins are hours wide in both directions, and there is no third DST
+combination to check. 07:45 rather than 07:15 is only a stagger: it keeps the
+NSE run from queueing behind the ASX image pull, and at ~63 s per 100-ticker
+batch on Fargate its 26 batches finish around 08:15, well before the US task
+starts.
 
 **US at 09:30.** Melbourne and New York are 14–16 hours apart, and the gap moves
 with **US** daylight saving independently of Melbourne's — so a fixed Melbourne
@@ -314,8 +357,10 @@ EST, not when it was configured.
 
 `max_data_age_days: 5` is the guard, and no scheduled slot comes close to it.
 The largest gap is a Tuesday run reaching back to Friday's US session — three
-days, inside the limit. A public holiday on either exchange extends that by a
-day and is still safe.
+days, inside the limit. A public holiday on any of the three extends that by a
+day and is still safe. India keeps ~16 market holidays a year against the US's
+~10, which is the largest single extension in the system and still leaves
+margin.
 
 ## 6. Component specifications
 
@@ -343,19 +388,26 @@ docker build --platform linux/amd64 -t stocks:latest .
 Sizing is derived from the §2.1 measurements, with headroom rounded to the
 nearest valid Fargate CPU/memory combination.
 
-| | US | ASX |
-|---|---|---|
-| CPU | **512 (0.5 vCPU)** | 512 (0.5 vCPU) |
-| Memory | 4096 MB | 2048 MB |
-| Measured peak RSS | 950 MB | ~131 MB |
-| Headroom | 4.3× | 15× |
-| Ephemeral storage | 20 GiB (default) | 20 GiB (default) |
-| Peak disk use | ~210 MB | ~15 MB |
-| Command | `all --exchange US --instrument-type stocks --period 365` | `all --exchange ASX --instrument-type etf --period 365` |
-| Measured runtime on Fargate | ~63 min | ~7 min |
+| | US | ASX | NSE |
+|---|---|---|---|
+| CPU | **512 (0.5 vCPU)** | 512 (0.5 vCPU) | 512 (0.5 vCPU) |
+| Memory | 4096 MB | 2048 MB | 3072 MB |
+| Measured peak RSS | 950 MB | ~131 MB | 614 MB |
+| Headroom | 4.3× | 15× | 5.0× |
+| Ephemeral storage | 20 GiB (default) | 20 GiB (default) | 20 GiB (default) |
+| Peak disk use | ~210 MB | ~15 MB | ~85 MB |
+| Command | `all --exchange US --instrument-type stocks --period 400` | `all --exchange ASX --instrument-type etf --period 400` | `all --exchange NSE --instrument-type stocks --period 400` |
+| Measured runtime on Fargate | ~63 min | ~7 min | ~30 min (projected) |
 
-Both use `requiresCompatibilities: ["FARGATE"]`, `networkMode: awsvpc`, and
-`operatingSystemFamily: LINUX` / `cpuArchitecture: X86_64`.
+All three use `requiresCompatibilities: ["FARGATE"]`, `networkMode: awsvpc`,
+and `operatingSystemFamily: LINUX` / `cpuArchitecture: X86_64`.
+
+**NSE takes 3 GB, not the ASX 2 GB.** Peak RSS does not track ticker count:
+NSE screens 2,531 symbols against the US universe's 13,140 — a fifth — but
+holds 614 MB against 950 MB, nearly two thirds. The analysis frames are built
+per window, and NSE runs five windows over 600k price rows with price history
+enabled. At 2048 MB the headroom would be 3.3×, below the 4× the US task
+keeps; the next valid Fargate step up costs well under a cent a run.
 
 The generous memory headroom is deliberate: the fetch stage's peak scales with
 universe size, and the US universe grows as the symbol directory does. A task
@@ -383,13 +435,14 @@ SSM Parameter Store to hold, which removes a whole class of rotation work.
 
 ### 6.3 Logging
 
-Two log groups, one per universe, so the heartbeat metric filters in §8.3 get
-clean per-universe metrics without log-stream gymnastics:
+One log group per universe, so the heartbeat metric filters in §8.3 get clean
+per-universe metrics without log-stream gymnastics:
 
 | Log group | Retention |
 |---|---|
 | `/ecs/stocks/us` | 30 days |
 | `/ecs/stocks/asx` | 30 days |
+| `/ecs/stocks/nse` | 30 days |
 
 Driver `awslogs`, with `awslogs-stream-prefix = "ecs"`. At a few hundred KB per
 run, retention cost is negligible; 30 days is enough to investigate a failure
@@ -398,8 +451,8 @@ without becoming an archive.
 ### 6.4 S3
 
 The existing data bucket in `ap-southeast-2` already holds
-`us.db` and `asx.db` at the root — the layout `upload_to_s3` produces, since it
-keys on the basename.
+`us.db`, `asx.db` and `nse.db` at the root — the layout `upload_to_s3`
+produces, since it keys on the basename.
 
 | Setting | Value | Rationale |
 |---|---|---|
@@ -432,12 +485,13 @@ code uses, and it needs exactly one thing:
     "Effect": "Allow",
     "Action": ["s3:PutObject"],
     "Resource": ["arn:aws:s3:::${DATA_BUCKET}/us.db",
-                 "arn:aws:s3:::${DATA_BUCKET}/asx.db"]
+                 "arn:aws:s3:::${DATA_BUCKET}/asx.db",
+                 "arn:aws:s3:::${DATA_BUCKET}/nse.db"]
   }]
 }
 ```
 
-Scoped to the two exact keys. The pipeline never reads from S3 (see D1) and
+Scoped to those exact keys. The pipeline never reads from S3 (see D1) and
 never lists the bucket, so `GetObject` and `ListBucket` are deliberately
 absent. This replaces the long-lived IAM user credentials the local runs use
 today — nothing needs `aws configure export-credentials` in AWS.
@@ -473,12 +527,12 @@ sequenceDiagram
 
     Y-->>C: universe membership
     C->>Y: fetch — 365d EOD, batches of 100
-    Y-->>C: prices (201 MB US / 14 MB ASX)
+    Y-->>C: prices (201 MB US / 82 MB NSE / 14 MB ASX)
     C->>C: analyze — 5 growth windows, write CSVs + manifest
     C->>C: publish — build SQLite, VACUUM, atomic rename
 
     alt data fresh and fetch complete
-        C->>B: PutObject us.db / asx.db
+        C->>B: PutObject us.db / asx.db / nse.db
         C->>L: "Uploaded to s3://..."
         C-->>E: exit 0
     else stale data
@@ -581,9 +635,9 @@ only evidence that no detector fired, not that a database exists.
 | | |
 |---|---|
 | Source | S3 `Object Created` via EventBridge, **not** ECS task completion |
-| Filter | bucket + key in (`us.db`, `asx.db`) |
+| Filter | bucket + key in (`us.db`, `asx.db`, `nse.db`) |
 | Target | Lambda `stocks-notify` → SES → inbox |
-| Volume | one message per database per run, ~2/day |
+| Volume | one message per database per run, ~3/day |
 
 **Why the S3 object rather than the ECS task.** A task can exit 0 having
 published nothing — that is failure mode 8.2, when `S3_BUCKET` or
@@ -592,15 +646,15 @@ email would then arrive looking like success on exactly the night there is no
 new data. Watching the object means the email cannot be sent unless the
 database is really in the bucket.
 
-**Why a separate channel from the alerts.** Routine success is ~2 messages a
+**Why a separate channel from the alerts.** Routine success is ~3 messages a
 day and exceptional failure is ~0. Delivered together the volume trains you to
 filter them, and the filter then swallows the alerts too. Apart, `stocks-alerts`
 stays rare enough to be worth reading.
 
-**Why one email per database, not one per night.** The runs are 2h15m apart
-(07:15 and 09:30 Melbourne). A combined message would have to hold the ASX
+**Why one email per database, not one per night.** The runs span 2h15m (07:15,
+07:45 and 09:30 Melbourne). A combined message would have to hold the ASX
 result back until the US run finished, and would say nothing at all on a night
-when the second task never started.
+when a later task never started.
 
 The message carries the object size, which is the cheapest available check that
 the run produced a real database: a screen that matched nothing still publishes,
@@ -612,7 +666,7 @@ the format.
 
 The message is stated in Melbourne local time — `07:34 AEST · Wed 26 Aug 2026`
 — because everything else about this stack is: the schedules run on
-`Australia/Melbourne`, this document quotes 07:15 and 09:30, and the reader is
+`Australia/Melbourne`, this document quotes 07:15, 07:45 and 09:30, and the reader is
 in that zone. EventBridge's input transformer substitutes values and never
 converts them, so a direct target can quote nothing but the UTC `$.time`,
 leaving a correction of +10 or +11 hours — and a date change — to be done in
@@ -716,25 +770,32 @@ $0.00532/GB-hour. **Verify current rates against the AWS pricing page.**
 
 Priced on the measured Fargate durations from §2.2 — 63.3 min for US, 6.7 min
 for ASX — not the host figures. Fargate bills wall-clock per second from image
-pull to task stop, so runtime is the dominant term.
+pull to task stop, so runtime is the dominant term. NSE has not yet run in
+AWS; it is priced at the 30 min projected in §6.2 from the same per-batch rate.
 
 | Item | Basis | Monthly |
 |---|---|---|
 | Fargate — US | 0.5 vCPU + 4 GB × 63 min × 30 | $1.44 |
+| Fargate — NSE | 0.5 vCPU + 3 GB × 30 min × 30 | $0.60 |
 | Fargate — ASX | 0.5 vCPU + 2 GB × 7 min × 30 | $0.12 |
-| Public IPv4 | $0.005/hr × ~35 hr | $0.18 |
+| Public IPv4 | $0.005/hr × ~50 hr | $0.25 |
 | ECR storage | 10 images × ~124 MB compressed | $0.12 |
-| S3 storage | ~8 MB live + 30 noncurrent versions | $0.01 |
-| S3 requests | ~60 PUT/month | negligible |
-| CloudWatch Logs | ~20 MB ingest + 30 d retention | $0.05 |
-| CloudWatch Alarms | 4 alarms × $0.10 | $0.40 |
+| S3 storage | ~12 MB live + 30 noncurrent versions | $0.01 |
+| S3 requests | ~90 PUT/month | negligible |
+| CloudWatch Logs | ~30 MB ingest + 30 d retention | $0.06 |
+| CloudWatch Alarms | 7 alarms × $0.10 | $0.70 |
 | SNS | < 100 messages | negligible |
-| Data transfer in | 215 MB/day from the provider | **free** |
-| **Total** | | **≈ $2.32/month** |
+| Data transfer in | ~300 MB/day from the provider | **free** |
+| **Total** | | **≈ $3.30/month** |
 
 An earlier draft of this section said $1.01, priced on the host runtimes before
 any task had run in AWS. The gap is entirely §2.2: the US run is 17x longer on
 Fargate, and Fargate charges by the second.
+
+Of the rise from $2.32 to $3.30, NSE accounts for about $0.70 — its own Fargate
+time plus the extra public IPv4 hours. The remaining $0.30 is the alarm line
+being corrected: it was written when there were four alarms and there are now
+seven, two per universe plus `stocks-notify-failed`.
 
 Note what is still absent: no NAT Gateway ($43), no EFS, no always-on anything.
 Data transfer *in* is free, which matters because it is 6.5 GB/month — the
@@ -743,7 +804,7 @@ largest data volume in the system, at no cost.
 **Further savings, if it ever matters.** Fargate Spot is ~70% cheaper and this
 workload is an unusually good fit: an interruption costs one day of freshness,
 which the next run repairs completely (§3/D1). That would take the US task to
-roughly $0.43/month. Not applied, because the absolute saving is about a dollar.
+roughly $0.43/month and NSE to $0.18. Not applied, because the absolute saving is about a dollar.
 
 ## 11. Application changes required
 
@@ -889,6 +950,12 @@ resource "aws_security_group" "egress_only" {
 | 4 | Force a failure and confirm an email arrives | **Done** — subscription confirmed; a `publish` job on an empty task exited 1 in 75 s through the real EventBridge rule |
 | 5 | Set `schedule_enabled = true` | **Done** — both schedules ENABLED. Watch three consecutive runs |
 | 6 | Decommission the local cron, if any | — |
+| 7 | Add NSE as a third universe | `terraform apply` — 7 added, 7 changed, 0 destroyed. Run `stocks-nse` by hand, confirm `nse.db` lands and its email arrives, then watch three nights |
+
+Phases 0–6 describe the original two-universe rollout and are left as they were
+recorded. Phase 7 is additive and needs no repeat of phases 2 or 4: the image
+already carries `config/nse_stocks*`, and the alarms it creates are the same
+two per-universe detectors phase 3 already proved end to end.
 
 Phase 3 also validated the heartbeat alarm end to end without contriving
 anything: both `no-upload-in-24h` alarms sat in `ALARM` from creation, because
@@ -909,7 +976,8 @@ nothing about delivery.
   interruption-tolerant given D1's self-healing property. Deferred only because
   the absolute saving is about $0.14/month.
 - **Container Insights** to confirm the §2.1 memory measurements hold in
-  Fargate, then tighten the task sizing.
+  Fargate, then tighten the task sizing. This now covers the NSE task's 3 GB,
+  which is sized from a host measurement and no Fargate run at all.
 - **A query layer** in front of S3 — Lambda + API Gateway, or Athena over the
   CSVs — so consumers do not each download the database.
 
@@ -917,7 +985,8 @@ nothing about delivery.
 
 ## 14. Decisions
 
-Settled 2026-08-23; the Terraform in `infra/` implements all of them.
+Settled 2026-08-23, except 6 (2026-08-30); the Terraform in `infra/`
+implements all of them.
 
 | # | Question | Decision |
 |---|---|---|
@@ -926,6 +995,7 @@ Settled 2026-08-23; the Terraform in `infra/` implements all of them.
 | 3 | Terraform state | S3, bucket created by `infra/bootstrap`. Locking is S3-native (`use_lockfile`) rather than a DynamoDB table, which Terraform 1.11 deprecated. |
 | 4 | ASX universe additions | Left as-is. New ASX ETFs arrive by editing `config/asx_etf.csv` and rebuilding, which suits a monthly image refresh — and the image being the source of truth is what makes the task stateless (D1). |
 | 5 | Empty `consistent_growth_stocks` | No alert. An empty table is a real screening outcome, not a fault: on 2026-08-21 the ASX intersection was genuinely empty because no ETF cleared 25% over three months and the long-window and short-window leaders were disjoint. |
+| 6 | NSE scheduling | 07:45 Melbourne, Tue–Sat. India runs no daylight saving, so unlike the US slot the margin to the session boundary does not move with a second DST regime — the only variation is Melbourne's own hour, and both cases clear the close and the next pre-open by hours (§5.1). |
 
 ### 14.1 Still open
 

@@ -2,8 +2,12 @@ locals {
   # One entry drives the task definition, log group, schedule, metric filters
   # and alarms for a universe.
   #
-  # Memory is sized from measured peak RSS: 950 MB for the US fetch, ~131 MB
-  # for ASX. CPU is sized low on purpose -- the run is network-bound, not
+  # Memory is sized from measured peak RSS: 950 MB for the US fetch, 614 MB
+  # for NSE, ~131 MB for ASX. Peak does not track ticker count alone -- NSE
+  # screens a fifth of the US universe and holds nearly two thirds of its
+  # memory, because the analysis frames are built per window and NSE runs five
+  # of them over 600k price rows. CPU is sized low on purpose -- the run is
+  # network-bound, not
   # compute-bound. On Fargate the US fetch takes ~60 minutes against 3m42s on
   # a developer machine, with zero rate-limit errors: the provider simply
   # answers AWS egress more slowly. Since Fargate bills wall-clock per second,
@@ -45,6 +49,43 @@ locals {
       # run is clear of any in-progress session and the newest close is the
       # previous trading day's.
       cron = "cron(15 7 ? * TUE-SAT *)"
+    }
+    nse = {
+      exchange        = "NSE"
+      instrument_type = "stocks"
+      # 3 GB, not the ASX 2 GB: measured peak is 614 MB, and 2048 would leave
+      # 3.3x where the US task keeps 4x. Exit 137 -- the OOM killer -- is a
+      # failure mode observability.tf can only report after the fact, and the
+      # extra gigabyte costs well under a cent a run.
+      cpu      = 512
+      memory   = 3072
+      database = "nse.db"
+      # 07:45 Melbourne, Tue-Sat, covering Monday-Friday NSE sessions.
+      #
+      # India is the easy case. It observes no daylight saving, so only
+      # Melbourne's clock moves and the gap is +4:30 (AEST) or +5:30 (AEDT) --
+      # not the 14-16 hours, shifting from both ends independently, that makes
+      # the US slot delicate.
+      #
+      # NSE trades 09:15-15:30 IST, with pre-open from 09:00. In Melbourne
+      # terms that session closes at 20:00 the same evening (21:00 under AEDT)
+      # and the next pre-open is 13:30 the following afternoon (14:30 AEDT).
+      # A Melbourne morning therefore sits in a window where nothing is
+      # trading, with room at both ends:
+      #
+      #   07:45 Melbourne = 03:15 IST (AEST) / 02:15 IST (AEDT)
+      #     ~11 hours after the previous close, ~6 hours before the next
+      #     pre-open, in both DST combinations that exist.
+      #
+      # Tue-Sat for the same reason as the others, though the arithmetic is
+      # different: Tuesday's run screens Monday's Indian session, which closed
+      # on Monday *evening* Melbourne time rather than overnight as the US one
+      # does.
+      #
+      # 07:45 rather than 07:15 so the run is not queued behind the ASX image
+      # pull. At the ~63 s per 100-ticker batch measured on Fargate, 26 batches
+      # take about half an hour and finish well before the US task at 09:30.
+      cron = "cron(45 7 ? * TUE-SAT *)"
     }
   }
 

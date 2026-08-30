@@ -23,8 +23,8 @@ resource "aws_iam_role_policy_attachment" "execution" {
 }
 
 # ---------------------------------------------------------------- task role
-# The only identity the pipeline itself uses. It writes two objects and does
-# nothing else: the pipeline never reads from S3 (every artefact is rebuilt
+# The only identity the pipeline itself uses. It writes one object per universe
+# and does nothing else: the pipeline never reads from S3 (every artefact is rebuilt
 # each run) and never lists the bucket, so GetObject and ListBucket are absent
 # on purpose. This replaces the long-lived IAM user keys local runs use.
 
