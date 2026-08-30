@@ -1,0 +1,90 @@
+config:
+  # Input ticker list, resolved against the project root. Tickers are NSE
+  # trading symbols; the fetch appends ".NS" for the price provider (see
+  # config.EXCHANGE_SUFFIXES), so RELIANCE is requested as RELIANCE.NS.
+  ticker_file: config/nse_stocks.csv
+
+  # Generated artefacts, resolved against STOCKS_DATA_ROOT if that env var is
+  # set, otherwise against <project_root>/data.
+  data_dir: nse/stocks
+  db_path: nse.db
+
+  analysis:
+    # How a window's percentage change is defined.
+    #   google_finance  single closes, the last session on or before the
+    #                   calendar anchor, and the raw (split-adjusted,
+    #                   dividend-unadjusted) close -- the number a Google
+    #                   Finance quote page shows, so results can be checked
+    #                   against one directly. endpoint_window does not apply.
+    #   robust          median of endpoint_window closes at each end, the first
+    #                   session inside the window, and the fully adjusted
+    #                   series. Counts dividends, so it reads higher than
+    #                   Google Finance on anything with a yield.
+    return_basis: google_finance
+    # Prices are INR. The floor is per-config and denominated in the
+    # exchange's own currency, so the US$10 default would be Rs 10 here --
+    # about 11 US cents, which screens nothing out at all. Rs 100 is roughly
+    # the level below which NSE listings stop being ordinary mid-caps and
+    # start being the penny tail, where a percentage move is a tick.
+    min_price: 100.0
+    # NSE turnover is concentrated: the index names trade in the millions of
+    # shares a day while the long tail barely trades. This floor removes the
+    # dormant tail without touching anything a retail order could fill.
+    min_median_volume: 50000
+    # Require 80% of the window's calendar span before reporting a ticker for
+    # it, so recent listings do not appear in the longer-window tables.
+    min_coverage: 0.8
+    # Median of N trading days at each endpoint instead of a single close.
+    endpoint_window: 3
+    # Fraction of the window's expected trading sessions a ticker must have.
+    # min_coverage only checks that first and last observations span the
+    # window; this checks the history in between is actually there.
+    #
+    # Expected sessions are counted as plain weekdays, so India's ~16 market
+    # holidays a year cost about 6% of the count against the US's ~4%. Both
+    # sit far above this bar; it is here to catch a ticker with two prints a
+    # year apart, not to model a holiday calendar.
+    min_observation_ratio: 0.5
+    # Refuse to screen a price file whose newest row is older than this.
+    max_data_age_days: 5
+    # EQUITY_L.csv is filtered to the EQ and BE series before it reaches the
+    # universe file, so every row is already ordinary equity. This filter is
+    # the second line of that same defence.
+    asset_types: [common_stock]
+    # Universe categories held out of the screen. Nothing in an NSE equity
+    # universe is geared or inverse -- India lists those as derivatives, not
+    # as shares -- so this excludes nothing today. Kept for symmetry with the
+    # other configs, and because category is inferred fund-only anyway.
+    exclude_categories: [leveraged]
+    # Publish price history for matched tickers as well as the screen results,
+    # for charting. Screen results are unaffected either way.
+    include_price_history: true
+    # How densely to sample it. Each mode keeps the last trading day of the
+    # period, so the series always ends on the newest close.
+    #   daily        every session (~251 rows/ticker, ~94% of the database)
+    #   weekly       last session of each week (~53 rows)
+    #   semi_monthly last session of each half-month (~25 rows)
+    #   month_end    last session of each month (~13 rows)
+    price_history_sampling: weekly
+    # Off, unlike the ASX config. That one charts its whole universe because
+    # ~450 ETFs x ~53 weekly points is under 2 MB; a full NSE equity list is
+    # ~2,000 tickers, and the same table would be roughly 5x that for a
+    # universe whose tail nobody charts. Turn it on if you want every listed
+    # name chartable and can carry the file size.
+    include_universe_history: false
+    windows:
+      - {months: 12, label: 1_year, threshold: 25.0}
+      - {months: 6, label: 6_months, threshold: 25.0}
+      - {months: 3, label: 3_months, threshold: 25.0}
+      - {months: 1, label: 1_month, threshold: 10.0}
+      # A 7-day window holds only ~5 sessions, too few for the 3-day endpoint
+      # median used elsewhere: one short trading week would exclude
+      # everything, so min_coverage is halved. (endpoint_window is set for
+      # completeness and applies only under return_basis: robust -- the
+      # google_finance basis above is defined on single closes.)
+      #
+      # 10%, matching the US stocks config rather than the ASX ETF one. These
+      # are single companies, not baskets: a 10% week is an ordinary move for
+      # one stock and a sector-wide event for a fund, which is why the ASX
+      # config had to drop its bar to 5% and this one does not.
+      - {days: 7, label: 7_days, threshold: 10.0, endpoint_window: 2, min_coverage: 0.5}

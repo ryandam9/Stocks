@@ -264,6 +264,98 @@ def fetch_asx_directory(timeout: int = 60, text: str | None = None) -> pd.DataFr
     return parse_asx_directory(text if text is not None else _download(ASX_DIRECTORY_URL, timeout))
 
 
+# ------------------------------------- NSE (India)
+
+# NSE publishes the whole equity list as a plain CSV. Unlike the ASX company
+# directory this one classifies its rows -- the SERIES column says what kind of
+# line each symbol is -- so an NSE refresh needs no provider lookup.
+NSE_DIRECTORY_URL = "https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv"
+
+# Series codes that are ordinary equity in the rolling settlement segment.
+#
+#   EQ  normal rolling settlement -- intraday allowed, the bulk of the list
+#   BE  trade-for-trade: delivery only, no intraday. Still ordinary shares,
+#       and a stock moves between EQ and BE under surveillance rather than
+#       becoming a different security, so excluding BE would silently drop a
+#       name the week it is put there.
+#
+# Deliberately absent: SM and ST (the SME platform, where a lot is thousands
+# of shares and screen volume is not comparable), and the debt, warrant and
+# rights series. None of those are ordinary equity exposure, which is the same
+# line drawn by asset_type everywhere else in this project.
+NSE_EQUITY_SERIES = frozenset({"EQ", "BE"})
+
+
+def parse_nse_directory(text: str, series=NSE_EQUITY_SERIES) -> pd.DataFrame:
+    """Parse NSE's EQUITY_L.csv into ticker/name/exchange/asset_type rows.
+
+    The file's own header is::
+
+        SYMBOL, NAME OF COMPANY, SERIES, DATE OF LISTING, PAID UP VALUE, ...
+
+    with a leading space on every column name after the first, which is why
+    the header is matched case- and whitespace-insensitively rather than by
+    exact string.
+
+    Args:
+        text: The CSV content.
+        series: Series codes to keep. Defaults to ordinary equity.
+
+    Raises:
+        ValueError: no SYMBOL column, or no rows survived.
+    """
+    rows = list(csv.DictReader(io.StringIO(text)))
+    if not rows:
+        raise ValueError("NSE directory: parsed no rows")
+
+    def pick(row, *wanted):
+        for key in row:
+            if key and key.strip().lower() in wanted:
+                return (row[key] or "").strip()
+        return ""
+
+    if not any(key and key.strip().lower() == "symbol" for key in rows[0]):
+        raise ValueError("NSE directory: no SYMBOL column; is this EQUITY_L.csv?")
+
+    wanted = {str(code).strip().upper() for code in series}
+    frame = pd.DataFrame(
+        [
+            {
+                "ticker": pick(row, "symbol").upper(),
+                "name": pick(row, "name of company", "name"),
+                "exchange": "NSE",
+                # The series has already answered this: every row kept here is
+                # an ordinary share, so there is nothing to infer from the name
+                # and nothing to ask the provider about.
+                "asset_type": "common_stock",
+                "series": pick(row, "series").upper(),
+            }
+            for row in rows
+        ]
+    )
+    frame = frame[frame["ticker"] != ""]
+    frame = frame[frame["series"].isin(wanted)]
+    frame = frame.drop(columns=["series"]).drop_duplicates(subset=["ticker"], keep="first")
+    if frame.empty:
+        raise ValueError(
+            f"NSE directory: no rows in series {', '.join(sorted(wanted))}. "
+            f"Check the file is EQUITY_L.csv and not an index or SME export."
+        )
+    return frame.reset_index(drop=True)
+
+
+def fetch_nse_directory(timeout: int = 60, text: str | None = None) -> pd.DataFrame:
+    """Download NSE's equity list.
+
+    Args:
+        timeout: Request timeout in seconds.
+        text: Pre-fetched CSV content, for tests and for the common case --
+            NSE rejects scripted downloads more often than not, so the file is
+            usually saved from a browser and fed in with ``--from-file``.
+    """
+    return parse_nse_directory(text if text is not None else _download(NSE_DIRECTORY_URL, timeout))
+
+
 # ------------------------------------- ASX investment products report
 
 # A product row in the report reads: code, the security's form, its name, then

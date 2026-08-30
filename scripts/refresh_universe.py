@@ -19,8 +19,16 @@ which are funds. So an ASX refresh drops what the directory no longer lists
 and asks the price provider about each *new* code before letting it into a
 fund universe. That lookup happens here, once, rather than on every run.
 
+NSE -- ``EQUITY_L.csv`` lists every quoted symbol and, in its SERIES column,
+says what kind of line each one is. That is enough to decide membership and
+classification without a provider lookup, so an NSE refresh works like the US
+one. NSE rejects scripted downloads more often than not; save the file from a
+browser and pass --from-file.
+
     uv run scripts/refresh_universe.py --exchange US  --instrument-type stocks
     uv run scripts/refresh_universe.py --exchange ASX --instrument-type etf --dry-run
+    uv run scripts/refresh_universe.py --exchange NSE --instrument-type stocks \
+        --from-file EQUITY_L.csv --dry-run
 
 If the exchange blocks the download -- the ASX does, intermittently -- save
 the file by hand and pass --from-file. That also accepts the ASX Investment
@@ -54,6 +62,7 @@ from config import load_config  # noqa: E402
 from symbol_directory import (  # noqa: E402
     US_EXCHANGES,
     fetch_asx_directory,
+    fetch_nse_directory,
     fetch_symbol_directory,
     parse_asx_report_text,
     read_pdf_text,
@@ -93,6 +102,8 @@ def fetch_directory(exchange: str, from_file: str | None) -> pd.DataFrame:
             other = from_file.replace("nasdaqlisted", "otherlisted")
             return fetch_symbol_directory(nasdaq_text=_read(from_file), other_text=_read(other))
         return fetch_symbol_directory()
+    if exchange == "NSE":
+        return fetch_nse_directory(text=_read(from_file) if from_file else None)
     if is_asx_report(from_file):
         return parse_asx_report_text(read_pdf_text(from_file))
     return fetch_asx_directory(text=_read(from_file) if from_file else None)
@@ -184,6 +195,11 @@ def main(exchange, instrument_type, from_file, trust_file, dry_run, force):
         # The file is the list, not a whole-market directory: an ETP report,
         # or a hand-built one. Asking the provider to confirm what the file
         # already asserts would only add a way for the run to fail.
+        added, skipped, unresolved = candidates, 0, []
+    elif exchange == "NSE":
+        # The SERIES column already said these are ordinary equity, so there
+        # is nothing to ask the provider. Unlike the ASX company directory,
+        # which lists codes without ever saying which of them are funds.
         added, skipped, unresolved = candidates, 0, []
     elif exchange in US_EXCHANGES:
         # Everything the directory lists, whatever its type. A US universe

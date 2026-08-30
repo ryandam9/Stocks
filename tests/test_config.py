@@ -85,11 +85,29 @@ def test_malformed_window_is_rejected(tmp_path, monkeypatch):
 
 def test_shipped_configs_all_load():
     """The checked-in configs must stay valid."""
-    for exchange, instrument in [("US", "stocks"), ("ASX", "etf")]:
+    for exchange, instrument in [("US", "stocks"), ("ASX", "etf"), ("NSE", "stocks")]:
         cfg = load_config(exchange, instrument)
         assert os.path.isabs(cfg.data_dir)
         assert cfg.growth_labels
         assert cfg.analysis.min_coverage > 0
+        assert os.path.exists(cfg.bundled_ticker_file), cfg.bundled_ticker_file
+
+
+def test_every_shipped_universe_loads_and_screens_something():
+    """A config whose universe filters to nothing would fail only at run time."""
+    from universe import default_asset_type_for, filter_categories, filter_universe, load_universe
+
+    for exchange, instrument in [("US", "stocks"), ("ASX", "etf"), ("NSE", "stocks")]:
+        cfg = load_config(exchange, instrument)
+        universe = load_universe(
+            cfg.bundled_ticker_file,
+            default_asset_type=default_asset_type_for(cfg.instrument_type),
+        )
+        screened = filter_categories(
+            filter_universe(universe, cfg.analysis.asset_types),
+            cfg.analysis.exclude_categories,
+        )
+        assert not screened.empty, f"{exchange} {instrument} screens no instruments"
 
 
 def test_price_history_sampling_defaults_to_weekly(tmp_path, monkeypatch):
