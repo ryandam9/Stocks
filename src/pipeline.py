@@ -118,7 +118,8 @@ def build_consistent_growth(conn: sqlite3.Connection, prefix: str, labels: list[
     conn.execute(
         f"""
         CREATE TABLE consistent_growth_stocks AS
-          SELECT ticker, name, exchange, pct_change AS pct_change_shortest_window,
+          SELECT ticker, name, exchange, issuer, category,
+                 pct_change AS pct_change_shortest_window,
                  threshold AS threshold_shortest_window,
                  data_as_of, run_id
           FROM "{prefix}_growth_{labels[-1]}"

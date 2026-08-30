@@ -20,7 +20,7 @@ def test_load_csv_applies_declared_types(tmp_path):
     header = ",".join(name for name, _ in GROWTH_COLUMN_TYPES)
     csv_path.write_text(
         header + "\n"
-        "AAA,Alpha,NYSE,common_stock,2025-01-01,10.5,2026-01-01,20.25,92.86,25.0,"
+        "AAA,Alpha,NYSE,common_stock,Alpha Inc,,2025-01-01,10.5,2026-01-01,20.25,92.86,25.0,"
         "251,364,0,0.997,0.958,1000000,adjusted,2026-01-01,run-1,https://x\n"
     )
     conn = sqlite3.connect(":memory:")
@@ -54,14 +54,15 @@ def test_missing_csv_raises(tmp_path):
 
 def test_consistent_growth_intersects_given_labels():
     conn = sqlite3.connect(":memory:")
+    # Built from the declared schema rather than a hand-written subset, so a
+    # column added to GROWTH_COLUMN_TYPES cannot leave this fixture behind the
+    # table the view actually reads.
     for label, tickers in [("a", ["X", "Y"]), ("b", ["X"])]:
-        conn.execute(
-            f'CREATE TABLE "p_growth_{label}" (ticker TEXT, name TEXT, exchange TEXT,'
-            " pct_change REAL, threshold REAL, data_as_of TEXT, run_id TEXT)"
-        )
+        conn.execute(f'CREATE TABLE "p_growth_{label}" ({GROWTH_SQL})')
         conn.executemany(
-            f'INSERT INTO "p_growth_{label}" VALUES (?,?,?,?,?,?,?)',
-            [(t, t, "NYSE", 1.0, 10.0, "2026-01-01", "r") for t in tickers],
+            f'INSERT INTO "p_growth_{label}" (ticker, name, exchange, issuer, category,'
+            " pct_change, threshold, data_as_of, run_id) VALUES (?,?,?,?,?,?,?,?,?)",
+            [(t, t, "NYSE", f"{t} Inc", "equity", 1.0, 10.0, "2026-01-01", "r") for t in tickers],
         )
     assert build_consistent_growth(conn, "p", ["a", "b"]) == 1
     assert [r[0] for r in conn.execute("SELECT ticker FROM consistent_growth_stocks")] == ["X"]
@@ -69,6 +70,11 @@ def test_consistent_growth_intersects_given_labels():
     assert conn.execute(
         "SELECT threshold_shortest_window FROM consistent_growth_stocks"
     ).fetchone() == (10.0,)
+    # Carried through too, so the summary table needs no join either.
+    assert conn.execute("SELECT issuer, category FROM consistent_growth_stocks").fetchone() == (
+        "X Inc",
+        "equity",
+    )
 
 
 def test_consistent_growth_skipped_without_labels():

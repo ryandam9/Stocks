@@ -326,7 +326,26 @@ def infer_issuer(name: str) -> str:
 # Order matters: "Global X Copper Miners" is metals rather than the equities it
 # technically holds, because that is how someone screening for copper thinks
 # of it.
+# Geared, inverse and multiple-of-index products. "-1x" and "2X" carry the
+# leading sign or digit; \bultra covers UltraShort and UltraPro as well as
+# ProShares' plain "Ultra". The multiple is capped at 5 so "10x Genomics"
+# cannot match, though a common stock never reaches this pattern anyway.
+LEVERAGED = "leveraged"
+_LEVERAGED_PATTERN = r"geared|leverag|inverse|\bultra|\bbear\b|\bbull\b|\b[1-5](\.\d+)?x\b"
+
 _CATEGORY_PATTERNS = [
+    # Structure before holdings. A geared or inverse fund's return is a
+    # multiple of something else's, so what it holds is the less useful half
+    # of the answer: BBUS is "Betashares US Equities Strong Bear", and calling
+    # that "equity" hides the fact that a screen result for it is a -2x bet
+    # rather than exposure to US shares. Screens exclude this category by
+    # default (AnalysisSettings.exclude_categories), which is only possible if
+    # the products carry it instead of their underlying's class.
+    #
+    # Reached for funds only -- load_universe gates category on
+    # FUND_ASSET_TYPES -- so "Ultragenyx", "Build-A-Bear" and "Ultra Clean
+    # Holdings" are never tested against it.
+    (LEVERAGED, _LEVERAGED_PATTERN),
     ("crypto", r"bitcoin|ethereum|\bcrypto|digital asset|blockchain|solana|\bxrp\b|coinbase"),
     ("precious metals", r"\bgold\b|silver|platinum|palladium|precious metal|bullion"),
     (
@@ -387,6 +406,17 @@ def infer_category(name: str) -> str:
     filling it with "equity" on the assumption would make the column look
     complete while being unverified on a third of the universe.
     """
+    # "leveraged" is tested against the untouched title, everything else
+    # against the issuer-stripped one. The strip exists so "Global X Copper
+    # Miners" is not attributed to an issuer called "Global", but it eats a
+    # leading structural word too: "2x Bitcoin ETF", "UltraPro Short Dow30"
+    # and "Geared Long US Treasury Bond" all lose the only word that says how
+    # they are built. No issuer name carries a gearing word except Leverage
+    # Shares, whose products are leveraged.
+    lowered = name.lower()
+    if re.search(_LEVERAGED_PATTERN, lowered):
+        return LEVERAGED
+
     lowered = _strip_issuer(name).lower()
     for category, pattern in _CATEGORY_PATTERNS:
         if re.search(pattern, lowered):
@@ -499,6 +529,25 @@ def filter_universe(df: pd.DataFrame, asset_types) -> pd.DataFrame:
     """
     wanted = {str(t).lower() for t in asset_types}
     return df[df["asset_type"].str.lower().isin(wanted)].reset_index(drop=True)
+
+
+def filter_categories(df: pd.DataFrame, exclude) -> pd.DataFrame:
+    """Drop instruments whose category is one the config excludes.
+
+    Separate from :func:`filter_universe` because it answers a different
+    question: asset_type is what the security *is*, category is what it does.
+    A geared ETF is a perfectly ordinary ETF by type, and is excluded here or
+    not at all.
+
+    A blank category is never excluded. The column is deliberately left empty
+    where a title cannot be classified honestly, so treating blank as a match
+    would drop a third of the universe on an exclusion that names one word.
+    """
+    unwanted = {str(c).strip().lower() for c in exclude if str(c).strip()}
+    if not unwanted:
+        return df.reset_index(drop=True)
+    category = df["category"].astype(str).str.strip().str.lower()
+    return df[~category.isin(unwanted)].reset_index(drop=True)
 
 
 def default_asset_type_for(instrument_type: str) -> str:

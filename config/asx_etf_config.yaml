@@ -40,6 +40,14 @@ config:
     max_data_age_days: 5
     # This universe is exchange-traded funds only.
     asset_types: [etf]
+    # Universe categories held out of the screen. Geared and inverse funds
+    # return a multiple of something else's move, so they lead a growth
+    # ranking by construction rather than by outperforming -- and a reverse
+    # split on one prints a figure that is simply wrong: BBUS topped a
+    # one-year ASX screen at +591% on a single 2.84 -> 27.96 step that was a
+    # 1-for-10 consolidation, not a return. Their price history is still
+    # published, so they stay chartable. Set to [] to screen them anyway.
+    exclude_categories: [leveraged]
     # Publish price history for matched tickers as well as the screen results,
     # for charting. Screen results are unaffected either way.
     include_price_history: true

@@ -53,6 +53,7 @@ from universe import (
     EXCHANGE_UNKNOWN,
     UNIVERSE_COLUMNS,
     default_asset_type_for,
+    filter_categories,
     filter_universe,
     load_universe,
 )
@@ -371,7 +372,8 @@ def compute_window_growth(
         latest_date: most recent date present in ``df``.
         exchange: configured exchange code, used only when a ticker's own
             exchange is unknown.
-        metadata: optional universe frame supplying exchange and asset_type.
+        metadata: optional universe frame supplying exchange, asset_type,
+            issuer and category.
         run_id: stamped onto every row for provenance.
 
     Returns:
@@ -432,15 +434,24 @@ def compute_window_growth(
     # Attach the ticker's real listing exchange. Falling back to the configured
     # exchange for everything is what produced links labelling NYSE securities
     # as NASDAQ.
+    #
+    # issuer and category ride along for the app's benefit: without them every
+    # question about who runs a winner or what it holds is a join back to the
+    # universe table, and a growth row is the thing being read.
+    carried = ["exchange", "asset_type", "issuer", "category"]
     if metadata is not None and not metadata.empty:
-        result = result.merge(
-            metadata[["ticker", "exchange", "asset_type"]], on="ticker", how="left"
-        )
+        present = [c for c in carried if c in metadata.columns]
+        result = result.merge(metadata[["ticker", *present]], on="ticker", how="left")
+        for column in carried:
+            if column not in result.columns:
+                result[column] = ""
     else:
         result["exchange"] = EXCHANGE_UNKNOWN
-        result["asset_type"] = ""
+        for column in ("asset_type", "issuer", "category"):
+            result[column] = ""
     result["exchange"] = result["exchange"].fillna(EXCHANGE_UNKNOWN).replace("", EXCHANGE_UNKNOWN)
-    result["asset_type"] = result["asset_type"].fillna("")
+    for column in ("asset_type", "issuer", "category"):
+        result[column] = result[column].fillna("")
 
     result["first_price"] = result["first_price"].round(4)
     result["latest_price"] = result["latest_price"].round(4)
@@ -821,10 +832,16 @@ def analyze_stocks(
         default_asset_type=default_asset_type_for(cfg.instrument_type),
     )
     manifest.universe_total = len(metadata)
-    screened = filter_universe(metadata, settings.asset_types)
-    manifest.universe_screened = len(screened)
+    by_type = filter_universe(metadata, settings.asset_types)
+    excluded_types = len(metadata) - len(by_type)
 
-    excluded_types = len(metadata) - len(screened)
+    # A geared or inverse fund returns a multiple of its underlying, so it
+    # leads a growth ranking by construction. Dropped here rather than in
+    # filter_universe because it is a fund of a perfectly ordinary asset type
+    # -- what disqualifies it is what it does, not what it is.
+    screened = filter_categories(by_type, settings.exclude_categories)
+    excluded_categories = len(by_type) - len(screened)
+    manifest.universe_screened = len(screened)
 
     # The universe-wide history is taken before the asset_types filter: the
     # screen ignores warrants and units, but a chart of one is still a chart
@@ -869,6 +886,12 @@ def analyze_stocks(
         print(
             f"Universe: {len(screened):,} of {len(metadata):,} instruments match "
             f"{settings.asset_types} ({excluded_types:,} excluded)"
+        )
+    if excluded_categories:
+        print(
+            f"Universe: {excluded_categories:,} instrument(s) held out of the screen "
+            f"as {', '.join(settings.exclude_categories)}; their price history is "
+            f"still published"
         )
     unknown_exchange = int((screened["exchange"] == EXCHANGE_UNKNOWN).sum())
     if unknown_exchange:

@@ -105,6 +105,31 @@ def test_unknown_price_history_sampling_rejected(tmp_path, monkeypatch):
         load_config("US", "stocks")
 
 
+def test_leveraged_is_excluded_from_screens_by_default(tmp_path, monkeypatch):
+    """Opt-out, not opt-in.
+
+    A geared fund returns a multiple of its underlying, so it leads a growth
+    ranking by construction; leaving the exclusion off by default would mean
+    every shipped config had to remember to ask for it.
+    """
+    write_config(tmp_path, monkeypatch, BASE)
+    assert load_config("US", "stocks").analysis.exclude_categories == ["leveraged"]
+
+
+def test_exclude_categories_can_be_emptied(tmp_path, monkeypatch):
+    body = {"config": {**BASE["config"], "analysis": {"exclude_categories": []}}}
+    write_config(tmp_path, monkeypatch, body)
+    assert load_config("US", "stocks").analysis.exclude_categories == []
+
+
+def test_a_bare_string_exclude_category_is_rejected(tmp_path, monkeypatch):
+    """ "leveraged" is iterable, so list() would make nine useless categories."""
+    body = {"config": {**BASE["config"], "analysis": {"exclude_categories": "leveraged"}}}
+    write_config(tmp_path, monkeypatch, body)
+    with pytest.raises(ValueError, match="exclude_categories must be a list"):
+        load_config("US", "stocks")
+
+
 def test_code_revision_prefers_the_baked_in_value(monkeypatch):
     """Containers exclude .git, so git cannot answer; the image bakes it in."""
     import runmeta
