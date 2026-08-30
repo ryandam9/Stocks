@@ -309,6 +309,64 @@ def test_derivative_lines_are_excluded_from_a_stock_screen(tmp_path, monkeypatch
     assert {r["ticker"] for r in read_csv_rows(cfg.growth_csv("1_month"))} == {"GOOD"}
 
 
+def test_geared_funds_are_held_out_of_the_screen_but_still_charted(tmp_path, monkeypatch):
+    """A -2x fund's move is its underlying's, doubled and flipped.
+
+    BBUS led a live one-year ASX screen at +591% on a single 2.84 -> 27.96
+    step -- a 1-for-10 consolidation the provider applied forward but not
+    backward. Nothing about the eligibility rules catches that, because the
+    series is smooth on either side of it. Excluding the category does, and
+    the history stays published so the fund is still chartable.
+    """
+    cfg = build_project(tmp_path, monkeypatch, asset_types=["etf"], include_universe_history=True)
+    os.makedirs(os.path.dirname(cfg.ticker_file), exist_ok=True)
+    with open(cfg.ticker_file, "w") as handle:
+        handle.write("ticker,name,exchange,asset_type,issuer,category,currency,source_date\n")
+        handle.write("GEAR,Geared Australian Equities ETF,ASX,etf,Betashares,,AUD,2026-08-29\n")
+        handle.write("VAS,Australian Shares Index ETF,ASX,etf,Vanguard,,AUD,2026-08-29\n")
+
+    frames = [
+        make_series(t, n, "2026-05-01", "2026-06-02", 100, 150)
+        for t, n in [
+            ("GEAR", "Geared Australian Equities ETF"),
+            ("VAS", "Australian Shares Index ETF"),
+        ]
+    ]
+    write_prices(cfg, pd.concat(frames, ignore_index=True))
+    manifest = analyze_stocks(cfg, allow_stale=True)
+
+    # Category is left blank in the file above, so this also proves
+    # load_universe fills it before the exclusion is applied.
+    assert manifest.universe_total == 2
+    assert manifest.universe_screened == 1
+    assert {r["ticker"] for r in read_csv_rows(cfg.growth_csv("1_month"))} == {"VAS"}
+
+    # The universe-wide history is taken before either filter, so an excluded
+    # fund is still chartable -- it is kept out of the ranking, not the data.
+    history_path = manifest.outputs["universe_history"]["path"]
+    assert "GEAR" in {r["ticker"] for r in read_csv_rows(history_path)}
+
+
+def test_screening_geared_funds_is_one_config_line_away(tmp_path, monkeypatch):
+    cfg = build_project(tmp_path, monkeypatch, asset_types=["etf"], exclude_categories=[])
+    os.makedirs(os.path.dirname(cfg.ticker_file), exist_ok=True)
+    with open(cfg.ticker_file, "w") as handle:
+        handle.write("ticker,name,exchange,asset_type,issuer,category,currency,source_date\n")
+        handle.write("GEAR,Geared Australian Equities ETF,ASX,etf,Betashares,,AUD,2026-08-29\n")
+
+    write_prices(
+        cfg,
+        make_series("GEAR", "Geared Australian Equities ETF", "2026-05-01", "2026-06-02", 100, 150),
+    )
+    analyze_stocks(cfg, allow_stale=True)
+
+    rows = read_csv_rows(cfg.growth_csv("1_month"))
+    assert [r["ticker"] for r in rows] == ["GEAR"]
+    # Carried onto the row, so the app can label or group it without a join.
+    assert rows[0]["issuer"] == "Betashares"
+    assert rows[0]["category"] == "leveraged"
+
+
 # ---------------------------------------------------------------- STK-011 / STK-015
 
 

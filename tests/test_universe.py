@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from universe import (
@@ -9,6 +10,7 @@ from universe import (
     ETF,
     EXCHANGE_UNKNOWN,
     company_name,
+    filter_categories,
     filter_universe,
     infer_asset_type,
     infer_category,
@@ -204,10 +206,55 @@ def test_infer_issuer(name, expected):
         # calling it equity would make the column look complete while being
         # unverified on a third of the universe.
         ("Aoris International B Managed Fund", ""),
+        # Structure wins over holdings. Each of these would otherwise be
+        # classified by what it tracks, which hides the fact that its return
+        # is a multiple of that thing's rather than the thing's.
+        ("Betashares US Equities Strong Bear Currency Hedged Complex ETF", "leveraged"),
+        ("Betashares Geared Australian Equities Complex ETF", "leveraged"),
+        ("Global X Ultra Short Nasdaq 100 Complex ETF", "leveraged"),
+        ("Direxion Daily AAPL Bull 2X ETF", "leveraged"),
+        ("ProShares UltraPro Short Dow30", "leveraged"),
+        ("-1x Short VIX Futures ETF", "leveraged"),
+        # Gearing words that are not gearing. "Bullion" is not "bull", and a
+        # 10x is above the cap, so neither trips the pattern.
+        ("Global X Gold Bullion ETF", "precious metals"),
+        ("10x Genomics Growth Fund", "healthcare"),
     ],
 )
 def test_infer_category(name, expected):
     assert infer_category(name) == expected
+
+
+def test_gearing_is_read_from_the_untouched_title():
+    """The issuer strip eats a leading structural word.
+
+    "2x Bitcoin ETF" and "Geared Long US Treasury Bond ETF" both open with the
+    only word that says how the product is built, and the issuer strip removes
+    a leading word. Read against the stripped title these classify as crypto
+    and fixed income -- true of what they hold, and wrong about what they are.
+    """
+    assert infer_category("2x Bitcoin ETF") == "leveraged"
+    assert infer_category("Geared Long US Treasury Bond Currency Hedged ETF") == "leveraged"
+    assert infer_category("Bitcoin ETF") == "crypto"
+
+
+def test_filter_categories_excludes_only_what_is_named():
+    frame = pd.DataFrame(
+        {
+            "ticker": ["GEAR", "VAS", "AAA", "IVV"],
+            "category": ["leveraged", "equity", "", "Leveraged"],
+        }
+    )
+    kept = filter_categories(frame, ["leveraged"])
+    # Matched case-insensitively, and a blank category is never a match: the
+    # column is left empty where a title cannot be classified honestly, so
+    # treating blank as a hit would drop a third of the universe.
+    assert list(kept["ticker"]) == ["VAS", "AAA"]
+
+
+def test_filter_categories_with_no_exclusions_keeps_everything():
+    frame = pd.DataFrame({"ticker": ["GEAR", "VAS"], "category": ["leveraged", "equity"]})
+    assert list(filter_categories(frame, [])["ticker"]) == ["GEAR", "VAS"]
 
 
 def test_the_issuers_own_name_is_not_evidence_about_the_assets():

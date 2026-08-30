@@ -938,9 +938,56 @@ metals`, `energy`, `agriculture`, `property`, `infrastructure`, `fixed income`,
 by the equities it technically holds, because that is how someone screening for
 copper thinks of it.
 
-One trap worth knowing: the issuer's own name is stripped before the category
-is matched. Platinum Asset Management runs `Platinum Asia ETF` and `Platinum
-International ETF`, and neither holds an ounce of the metal.
+`leveraged` is the one exception, and it wins over all of them. A geared or
+inverse product returns a multiple of something else's move, so what it holds
+is the less useful half of the answer: `Betashares US Equities Strong Bear` is
+technically an equity fund, and saying so hides that a result for it is a -2x
+bet rather than exposure to US shares. 18 of 457 ASX funds and 837 of the US
+universe carry it. Screens exclude the category by default — see
+[Leveraged and inverse products](#leveraged-and-inverse-products).
+
+Two traps worth knowing:
+
+- The issuer's own name is stripped before the category is matched. Platinum
+  Asset Management runs `Platinum Asia ETF` and `Platinum International ETF`,
+  and neither holds an ounce of the metal.
+- `leveraged` is matched *before* that strip, against the untouched title.
+  `2x Bitcoin ETF`, `UltraPro Short Dow30` and `Geared Long US Treasury Bond
+  ETF` each open with the only word that says how the product is built, and
+  the strip removes a leading word. Read against the stripped title they
+  classify as crypto, equity and fixed income — true of what they hold, and
+  wrong about what they are.
+
+### Leveraged and inverse products
+
+`BBUS` led a live one-year ASX screen at **+591%**. It did not return 591% —
+its history steps once from 2.84 to 27.96 on 2025-12-05 and is smooth on
+either side, which is a 1-for-10 consolidation the provider applied forward
+but not backward.
+
+No eligibility rule catches that. Coverage, observation ratio, liquidity and
+staleness all pass; the series simply has one wrong day in it. And even
+without the split artefact, a `-2x` fund tops a growth ranking whenever its
+underlying falls, by construction rather than by outperforming.
+
+So the whole category is held out of the screen by default:
+
+```yaml
+analysis:
+  exclude_categories: [leveraged]   # the default; set to [] to screen them
+```
+
+The exclusion is applied after `asset_types`, and separately from it, because
+it answers a different question: `asset_type` is what the security *is* — a
+geared ETF is a perfectly ordinary ETF — and `category` is what it does. A
+blank category is never excluded; the column is deliberately empty where a
+title cannot be classified honestly, so treating blank as a match would drop a
+third of the universe.
+
+It affects the screen only. Excluded funds keep their row in the universe
+table and their bars in the universe-wide price history, so they stay
+chartable — they are kept out of the ranking, not out of the data. The run log
+says how many were held out.
 
 ### When a name is wrong
 
@@ -1124,6 +1171,7 @@ config:
     return_basis: google_finance
     max_data_age_days: 5
     asset_types: [common_stock]
+    exclude_categories: [leveraged]
     windows:
       - {months: 12, label: 1_year, threshold: 25.0}
       - {months: 6, label: 6_months, threshold: 25.0}
@@ -1158,6 +1206,35 @@ unique and safe as filenames and SQLite identifiers.
 | `<prefix>_error.csv` | Tickers that returned no data, with error type |
 | `<prefix>_fetch_manifest.json` | Fetch provenance: run id, requested/succeeded counts, success ratio, `data_as_of` |
 | `<prefix>_analysis_manifest.json` | Analysis provenance: run id, code revision, thresholds, funnel counts, and the `source_run_id` of the fetch that produced the price file |
+
+### What a growth row carries
+
+Every per-window table — `<prefix>_growth_1_year`, `_6_months`, `_3_months`,
+`_1_month`, `_7_days` — has the same columns, declared once in
+`config.GROWTH_COLUMN_TYPES` so an empty run and a populated one produce a
+byte-identical schema.
+
+Alongside the measurement (`first_date`/`first_price`, `last_date`/
+`latest_price`, `pct_change`) and the diagnostics (`threshold`,
+`observations`, `days_covered`, `staleness_days`, `coverage`,
+`observation_ratio`, `median_volume`, `price_basis`, `data_as_of`, `run_id`),
+each row carries four facts copied from the universe file: `exchange`,
+`asset_type`, `issuer` and `category`.
+
+The last two are there because a growth row is the thing being read. Without
+them on the row, "is this top ten one manager's product shelf, or one story
+told ten times?" is a join back to the universe table:
+
+```sql
+-- What actually drove an ASX 1-month screen
+SELECT category, COUNT(*), ROUND(AVG(pct_change), 1)
+FROM asx_etf_growth_1_month GROUP BY category ORDER BY 2 DESC;
+```
+
+A real answer to that was three precious metals funds, three crypto and two
+industrial metals — eight rows, three signals. Both columns are blank where
+the universe file leaves them blank, and blank for every row when the universe
+is a legacy `TICKER~Name` file that has neither.
 
 ### Provenance travels inside the database
 

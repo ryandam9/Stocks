@@ -46,6 +46,13 @@ GROWTH_COLUMN_TYPES = [
     ("name", "TEXT"),
     ("exchange", "TEXT"),
     ("asset_type", "TEXT"),
+    # Carried from the universe file so a reader can group or filter a screen
+    # result without joining back to it. issuer answers "is this whole top ten
+    # one manager's product shelf?"; category answers "is it one story told
+    # eight times?" -- the 1-month ASX top eight has been three precious
+    # metals, three crypto and two industrial metals funds.
+    ("issuer", "TEXT"),
+    ("category", "TEXT"),
     ("first_date", "TEXT"),
     ("first_price", "FLOAT"),
     ("last_date", "TEXT"),
@@ -170,6 +177,15 @@ class AnalysisSettings:
     # Instrument categories to screen. Warrants, units and preferred lines are
     # excluded by default; they are not ordinary equity exposure.
     asset_types: list[str] = field(default_factory=lambda: ["common_stock", "etf"])
+    # Universe categories to keep out of the screen. Geared and inverse funds
+    # are excluded by default: their returns are a multiple of something
+    # else's, so they dominate any growth ranking by construction rather than
+    # by having outperformed, and a reverse split on one of them prints a
+    # figure that is simply wrong -- BBUS led an ASX one-year screen at
+    # +591% on a 2.84 -> 27.96 step that was a 1-for-10 consolidation Yahoo
+    # applied forward but not backward. Set to [] to screen them anyway.
+    # Applies to the screen only; excluded tickers still get price history.
+    exclude_categories: list[str] = field(default_factory=lambda: ["leveraged"])
     # Whether to publish price history for matched tickers, for charting. The
     # screen results themselves are unaffected either way.
     include_price_history: bool = True
@@ -583,6 +599,17 @@ def load_config(exchange: str, instrument_type: str) -> StockConfig:
         if not raw_types:
             raise ValueError(f"{path}: asset_types must not be empty")
 
+    if "exclude_categories" in analysis_raw:
+        raw_excluded = analysis_raw["exclude_categories"]
+        # Same trap as asset_types: a bare string is iterable, and
+        # "leveraged" would become nine single-character categories that
+        # exclude nothing.
+        if isinstance(raw_excluded, str) or not isinstance(raw_excluded, (list, tuple)):
+            raise ValueError(
+                f"{path}: exclude_categories must be a list, got {raw_excluded!r}. "
+                f"Write it as [{raw_excluded!r}] if you mean a single category."
+            )
+
     labels = [str(w["label"]) for w in windows]
     duplicates = {label for label in labels if labels.count(label) > 1}
     if duplicates:
@@ -618,6 +645,7 @@ def load_config(exchange: str, instrument_type: str) -> StockConfig:
         min_observation_ratio=float(analysis_raw.get("min_observation_ratio", 0.5)),
         max_data_age_days=int(analysis_raw.get("max_data_age_days", 5)),
         asset_types=list(analysis_raw.get("asset_types", ["common_stock", "etf"])),
+        exclude_categories=list(analysis_raw.get("exclude_categories", ["leveraged"])),
         include_price_history=bool(analysis_raw.get("include_price_history", False)),
         price_history_sampling=str(analysis_raw.get("price_history_sampling", "weekly")),
         include_universe_history=bool(analysis_raw.get("include_universe_history", False)),

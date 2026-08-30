@@ -509,3 +509,52 @@ def test_short_window_anchor_also_resolves_backwards(build_frame):
         df, {"days": 7}, -100.0, replace(GF, min_coverage=0.1), latest, "US"
     )
     assert gf.loc[0, "first_date"] == "2026-05-25"
+
+
+def test_growth_rows_carry_issuer_and_category(build_frame, latest_date):
+    """The app reads a growth row, not the universe table it came from.
+
+    Without these on the row, "is this top ten one manager's shelf, or one
+    story told ten times?" is a join away, which is why the ASX 1-month top
+    eight read as eight signals when it was three.
+    """
+    df = build_frame(make_series("GDX", "Gold Miners", "2025-06-02", "2026-06-02", 100, 200))
+    metadata = pd.DataFrame(
+        {
+            "ticker": ["GDX"],
+            "exchange": ["NYSEARCA"],
+            "asset_type": ["etf"],
+            "issuer": ["VanEck"],
+            "category": ["precious metals"],
+        }
+    )
+    result, _ = compute_window_growth(df, {"months": 12}, 25.0, LOOSE, latest_date, "US", metadata)
+    row = result.reset_index(drop=True).loc[0]
+    assert row["issuer"] == "VanEck"
+    assert row["category"] == "precious metals"
+    assert row["exchange"] == "NYSEARCA"
+
+
+def test_growth_rows_have_the_columns_even_without_metadata(build_frame, latest_date):
+    """A missing universe frame must not change the table's shape.
+
+    The SQLite schema is declared once from GROWTH_COLUMN_TYPES, so a run that
+    omitted a column would produce a table a later run could not append to.
+    """
+    df = build_frame(make_series("AAA", "Alpha", "2025-06-02", "2026-06-02", 100, 200))
+    result = growth(df, latest_date)
+    assert result.loc[0, "issuer"] == ""
+    assert result.loc[0, "category"] == ""
+
+
+def test_growth_rows_survive_a_universe_frame_missing_the_columns(build_frame, latest_date):
+    """A legacy TICKER~Name universe has no issuer or category to carry."""
+    df = build_frame(make_series("AAA", "Alpha", "2025-06-02", "2026-06-02", 100, 200))
+    metadata = pd.DataFrame(
+        {"ticker": ["AAA"], "exchange": ["NASDAQ"], "asset_type": ["common_stock"]}
+    )
+    result, _ = compute_window_growth(df, {"months": 12}, 25.0, LOOSE, latest_date, "US", metadata)
+    row = result.reset_index(drop=True).loc[0]
+    assert row["issuer"] == ""
+    assert row["category"] == ""
+    assert row["exchange"] == "NASDAQ"

@@ -38,13 +38,13 @@ AYLD,Global X S&P/ASX 200 Covered Call ETF,ASX,etf,Global X,equity,,2026-08-29
 B1SM,Bell Global Emerging Companies Class A Active ETF,ASX,etf,Bell,equity,,2026-08-29
 BANK,Global X Australian Bank Credit ETF,ASX,etf,Global X,fixed income,,2026-08-29
 BAOR,Aoris Int Fund (Class B) (Unhedged) Active ETF,ASX,etf,Aoris,,,2026-08-29
-BBAB,Betashares Geared Short Australian Government Bond Complex ETF,ASX,etf,Betashares,fixed income,,2026-08-29
-BBFD,Betashares Geared Short US Treasury Bond Currency Hedged Complex ETF,ASX,etf,Betashares,fixed income,,2026-08-29
-BBOZ,Betashares Australian Equities Strong Bear Complex ETF,ASX,etf,Betashares,equity,,2026-08-29
-BBUS,Betashares US Equities Strong Bear Currency Hedged Complex ETF,ASX,etf,Betashares,equity,,2026-08-29
+BBAB,Betashares Geared Short Australian Government Bond Complex ETF,ASX,etf,Betashares,leveraged,,2026-08-29
+BBFD,Betashares Geared Short US Treasury Bond Currency Hedged Complex ETF,ASX,etf,Betashares,leveraged,,2026-08-29
+BBOZ,Betashares Australian Equities Strong Bear Complex ETF,ASX,etf,Betashares,leveraged,,2026-08-29
+BBUS,Betashares US Equities Strong Bear Currency Hedged Complex ETF,ASX,etf,Betashares,leveraged,,2026-08-29
 BCOM,Global X Bloomberg Commodity Complex ETF,ASX,etf,Global X,resources,,2026-08-29
 BDCI,Muzinich BDC Income Fund – Active ETF,ASX,etf,Muzinich,fixed income,,2026-08-29
-BEAR,BetaShares Australian Equities BEAR Complex ETF,ASX,etf,Betashares,equity,,2026-08-29
+BEAR,BetaShares Australian Equities BEAR Complex ETF,ASX,etf,Betashares,leveraged,,2026-08-29
 BEMG,Betashares MSCI Emerging Markets Complex ETF,ASX,etf,Betashares,equity,,2026-08-29
 BEST,ETFS US Quality ETF,ASX,etf,Global X,equity,,2026-08-29
 BGBL,Betashares Global Shares ETF,ASX,etf,Betashares,equity,,2026-08-29
@@ -98,7 +98,7 @@ E200,SPDR S&P/ASX 200 ESG ETF,ASX,etf,SPDR,equity,,2026-08-29
 EAFZ,Ellerston Asia Growth Fund Complex ETF,ASX,etf,Ellerston,multi-asset,,2026-08-29
 EARN,PIMCO Short Term Active Yield Active ETF,ASX,etf,PIMCO,,,2026-08-29
 EBND,VanEck Vectors Emerging Income Opportunities Active ETF,ASX,etf,VanEck,,,2026-08-29
-ECRD,Betashares Enhanced Credit (Geared) Complex ETF,ASX,etf,Betashares,fixed income,,2026-08-29
+ECRD,Betashares Enhanced Credit (Geared) Complex ETF,ASX,etf,Betashares,leveraged,,2026-08-29
 EIGA,Perennial Income Generator Active ETF,ASX,etf,Perennial,,,2026-08-29
 EMKT,Vaneck MSCI Multifactor Emerging Markets Equity ETF,ASX,etf,VanEck,equity,,2026-08-29
 EMXC,iShares MSCI Emerging Markets ex China ETF,ASX,etf,iShares,equity,,2026-08-29
@@ -135,21 +135,21 @@ FSML,Firetrail Australian Small Companies Fund – Active ETF,ASX,etf,Firetrail,
 FSUB,Vaneck Australian Fixed Rate Subordinated Debt ETF,ASX,etf,VanEck,fixed income,,2026-08-29
 FUEL,Betashares Global Energy Companies Currency Hedged ETF,ASX,etf,Betashares,energy,,2026-08-29
 FUTR,Janus Henderson Global Sustainable Active ETF,ASX,etf,Janus Henderson,equity,,2026-08-29
-G200,Betashares Wealthbuilder Aus200 Geared Complex ETF,ASX,etf,Betashares,,,2026-08-29
+G200,Betashares Wealthbuilder Aus200 Geared Complex ETF,ASX,etf,Betashares,leveraged,,2026-08-29
 GAME,Betashares Video Games and Esports ETF,ASX,etf,Betashares,,,2026-08-29
 GARP,Global X S&P World ex Australia GARP ETF,ASX,etf,Global X,equity,,2026-08-29
 GBND,Betashares Sustainability leaders Diversified Bond ETF - Currency Hedged,ASX,etf,Betashares,fixed income,,2026-08-29
 GCAP,VanEck Bentham Global Capital Securities Active ETF,ASX,etf,VanEck,,,2026-08-29
 GCQF,GCQ Global Equities Complex ETF,ASX,etf,GCQ,equity,,2026-08-29
 GDX,VanEck Gold Miners ETF,ASX,etf,VanEck,precious metals,,2026-08-29
-GEAR,Betashares Geared Australian Equities Complex ETF,ASX,etf,Betashares,equity,,2026-08-29
+GEAR,Betashares Geared Australian Equities Complex ETF,ASX,etf,Betashares,leveraged,,2026-08-29
 GFXD,Coolabah Active Global Bond Complex ETF,ASX,etf,Coolabah,fixed income,,2026-08-29
-GGAB,Betashares Geared Long Australian Government Bond Complex ETF,ASX,etf,Betashares,fixed income,,2026-08-29
-GGBL,Betashares WealthBuilder Global Geared Complex ETF,ASX,etf,Betashares,,,2026-08-29
-GGFD,Geared Long US Treasury Bond Currency Hedged Complex ETF,ASX,etf,Betashares,fixed income,,2026-08-29
+GGAB,Betashares Geared Long Australian Government Bond Complex ETF,ASX,etf,Betashares,leveraged,,2026-08-29
+GGBL,Betashares WealthBuilder Global Geared Complex ETF,ASX,etf,Betashares,leveraged,,2026-08-29
+GGFD,Geared Long US Treasury Bond Currency Hedged Complex ETF,ASX,etf,Betashares,leveraged,,2026-08-29
 GGOV,Betashares U.S. Treasury Bond20+ Year ETF - Currency Hedged,ASX,etf,Betashares,fixed income,,2026-08-29
-GGUS,Betashares Geared US Equities Currency Hedged Complex ETF,ASX,etf,Betashares,equity,,2026-08-29
-GHHF,Betashares Wealthbuilder All Gr Geared Complex ETF,ASX,etf,Betashares,,,2026-08-29
+GGUS,Betashares Geared US Equities Currency Hedged Complex ETF,ASX,etf,Betashares,leveraged,,2026-08-29
+GHHF,Betashares Wealthbuilder All Gr Geared Complex ETF,ASX,etf,Betashares,leveraged,,2026-08-29
 GHIF,Ausbil Global Essential Infrastructure Fund (Hedged) – Active ETF,ASX,etf,Ausbil,infrastructure,,2026-08-29
 GHLD,Global X Gold Bullion (Currency Hedged) ETF,ASX,etf,Global X,precious metals,,2026-08-29
 GHRP,Global X S&P World ex Australia GARP (Currency Hedged) ETF,ASX,etf,Global X,equity,,2026-08-29
@@ -159,8 +159,8 @@ GLIN,iShares Core FTSE Global Infrastructure (AUD Hedged) ETF,ASX,etf,iShares,eq
 GLOB,Barrow Hanley Global Share Active ETF,ASX,etf,Barrow Hanley,equity,,2026-08-29
 GLPR,iShares Core FTSE Global Property Ex Australia (AUD Hedged) ETF,ASX,etf,iShares,equity,,2026-08-29
 GMTL,Global X Green Metal Miners ETF,ASX,etf,Global X,resources,,2026-08-29
-GMVW,VanEck Geared Australian Equal Weight Complex ETF,ASX,etf,VanEck,,,2026-08-29
-GNDQ,Betashares Wealth Builder Nasdaq 100 Geared (30-40% LVR) Complex ETF,ASX,etf,Betashares,technology,,2026-08-29
+GMVW,VanEck Geared Australian Equal Weight Complex ETF,ASX,etf,VanEck,leveraged,,2026-08-29
+GNDQ,Betashares Wealth Builder Nasdaq 100 Geared (30-40% LVR) Complex ETF,ASX,etf,Betashares,leveraged,,2026-08-29
 GOAT,VanEck Morningstar International Wide Moat ETF,ASX,etf,VanEck,,,2026-08-29
 GOLD,Global X Physical Gold,ASX,etf,Global X,precious metals,,2026-08-29
 GOOD,Janus Henderson Sustainable Credit Active ETF,ASX,etf,Janus Henderson,fixed income,,2026-08-29
@@ -262,9 +262,9 @@ JRHG,JPMorgan Global Research Enhanced Index Equity (Hedged) Active ETF,ASX,etf,
 L1HI,L1 Capital International (Hedged) Active ETF,ASX,etf,L1 Capital,,,2026-08-29
 L1IF,L1 Capital International (Unhedged) Active ETF,ASX,etf,L1 Capital,,,2026-08-29
 LEND,VanEck Global Listed Private Credit (AUD Hedged) ETF,ASX,etf,VanEck,fixed income,,2026-08-29
-LEVR,First Sentier Geared Australian Share Complex ETF,ASX,etf,First Sentier,equity,,2026-08-29
+LEVR,First Sentier Geared Australian Share Complex ETF,ASX,etf,First Sentier,leveraged,,2026-08-29
 LHGG,Lakehouse Global Growth Fund Active ETF,ASX,etf,Lakehouse,equity,,2026-08-29
-LNAS,Global X Ultra Long Nasdaq 100 Complex ETF,ASX,etf,Global X,technology,,2026-08-29
+LNAS,Global X Ultra Long Nasdaq 100 Complex ETF,ASX,etf,Global X,leveraged,,2026-08-29
 LNYN,Lanyon Investment Fund Active ETF,ASX,etf,Lanyon,,,2026-08-29
 LPGD,Loftus Peak Global Disruption Active ETF,ASX,etf,Loftus Peak,technology,,2026-08-29
 LPHD,Loftus Peak Global Disruption Hedged Active ETF,ASX,etf,Loftus Peak,technology,,2026-08-29
@@ -363,7 +363,7 @@ SKUK,Hejaz Sukuk Active ETF,ASX,etf,Hejaz,,,2026-08-29
 SLF,SPDR S&P/ASX 200 Listed Property ETF,ASX,etf,SPDR,equity,,2026-08-29
 SLVM,Global X Silver Miners ETF,ASX,etf,Global X,precious metals,,2026-08-29
 SMLL,Betashares Australian Small Companies Select ETF,ASX,etf,Betashares,equity,,2026-08-29
-SNAS,Global X Ultra Short Nasdaq 100 Complex ETF,ASX,etf,Global X,technology,,2026-08-29
+SNAS,Global X Ultra Short Nasdaq 100 Complex ETF,ASX,etf,Global X,leveraged,,2026-08-29
 SPHX,Spheria Australian Smaller Companies Fund – Active ETF,ASX,etf,Spheria,equity,,2026-08-29
 SPY,SPDR S&P 500 ETF,ASX,etf,SPDR,equity,,2026-08-29
 SSO,SPDR S&P/ASX Small Ordinaries ETF,ASX,etf,SPDR,equity,,2026-08-29
