@@ -710,7 +710,50 @@ the floor is denominated in the exchange's own currency:
 | | US | NSE | Why |
 |---|---|---|---|
 | `min_price` | 10.0 | **100.0** | ₹10 is about 11 US cents and excludes nothing. ₹100 is roughly where ordinary mid-caps stop and the penny tail starts. |
+| `max_price` | none | **500.0** | Affordability — see below. |
 | `include_universe_history` | off | off | ~2,000 tickers would make this table ~5x the ASX one, whose 450 ETFs are the reason it is on there. |
+
+`min_median_volume` is denominated in **shares, not money**, which makes it a
+much weaker filter at the cheap end: 50,000 shares a day is about ₹25 lakh of
+turnover on a ₹50 stock and about ₹5 crore on a ₹1,000 one. The ₹100 floor is
+partly doing that filter's job for it. Measured on the real universe, dropping
+the floor to ₹50 added 25 rows to a 300-row one-year screen — 8% more results,
+all of them in the band where the liquidity filter bites least.
+
+### Affordability: `max_price`
+
+Every other analysis setting is about data quality. This one is not — an
+expensive share is not a worse signal than a cheap one.
+
+It exists because India's cash market has **no fractional shares and a lot
+size of 1**, so the share price *is* the smallest ticket you can buy. A screen
+that reports MARUTI at ₹33,000 to someone with ₹500 to spend is reporting
+something they cannot act on.
+
+```yaml
+analysis:
+  min_price: 100.0
+  max_price: 500.0    # omit the line for no ceiling
+```
+
+Off by default, so US and ASX are unchanged. Set it and the funnel gains a
+`Below price ceiling` stage; the stage is always present so the funnel keeps
+one shape either way.
+
+Two consequences worth stating plainly:
+
+- **₹500 excludes most of the large-cap index.** RELIANCE, TCS, INFY and
+  MARUTI all trade above it, so the NSE screen is a small- and mid-cap screen
+  by construction. That is the intended trade, not a side effect.
+- **Nothing is lost from the fetch**, only from the screen, so changing the
+  ceiling needs a re-analysis and not a re-download:
+  ```bash
+  ./scripts/run_analysis.sh NSE stocks
+  ```
+
+A window may lift the ceiling for itself with `max_price: null`. An inverted
+band (`max_price` at or below `min_price`) is rejected at load rather than
+reported as "no ticker grew".
 
 India keeps ~16 market holidays a year against the US's ~10, and expected
 sessions are counted as plain weekdays, so `observation_ratio` reads about 6%

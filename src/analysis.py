@@ -407,6 +407,16 @@ def compute_window_growth(
         ),
         ("Liquid enough", stats["median_volume"] >= settings.min_median_volume),
         ("Above price floor", stats["last_price"] >= settings.min_price),
+        # Affordability, not data quality: with no fractional shares the share
+        # price is the smallest ticket, so a screen above the ceiling lists
+        # what its reader cannot buy. Always a stage, so the funnel keeps the
+        # same shape whether or not a ceiling is set.
+        (
+            "Below price ceiling",
+            pd.Series(True, index=stats.index)
+            if settings.max_price is None
+            else stats["last_price"] <= settings.max_price,
+        ),
         ("Valid baseline", stats["first_price"] > 0),
     ]
 
@@ -779,6 +789,7 @@ def analyze_stocks(
         universe_file=cfg.ticker_file,
         thresholds={
             "min_price": settings.min_price,
+            "max_price": settings.max_price,
             "min_median_volume": settings.min_median_volume,
             "min_coverage": settings.min_coverage,
             "min_observation_ratio": settings.min_observation_ratio,
