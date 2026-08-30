@@ -653,15 +653,70 @@ look anyway):
 |---|---|---|
 | `US` | The whole US listed universe: Nasdaq, NYSE, NYSE American, NYSE Arca, Cboe BZX, IEX | ✅ `config/us_stocks_config.yaml` |
 | `ASX` | Australian Securities Exchange — **ETFs only** today | ✅ `config/asx_etf_config.yaml` (`etf`) |
+| `NSE` | National Stock Exchange of India — **equities** | ✅ `config/nse_stocks_config.yaml` (`stocks`) |
 | `NASDAQ` | Nasdaq-listed only | — add a config to use |
 | `NYSE` | NYSE, NYSE American, NYSE Arca | — add a config to use |
-| `NSE` / `BSE` | India | — add a config to use |
+| `BSE` | Bombay Stock Exchange | — add a config to use |
 
 `US` is the shipped US universe because the exchange symbol directory covers
 every US venue and links are built per ticker. `NASDAQ` and `NYSE` remain
 available if you want a venue-restricted universe; create
 `config/<exchange>_<type>_config.yaml` and run `scripts/refresh_universe.py`
 against it.
+
+### NSE coverage
+
+**NSE rather than BSE**, and the choice is not close:
+
+- **Symbols.** NSE trades under readable symbols — `RELIANCE`, `TCS` — which
+  the fetch turns into `RELIANCE.NS`. BSE's Yahoo symbols are frequently the
+  numeric scrip code (`500325.BO`), which is unreadable in a result table and
+  has no Google Finance page under the ticker a person would search for.
+- **Size vs. substance.** BSE lists roughly 5,000 companies to NSE's ~2,000,
+  but almost the entire difference is a tail that barely trades. The
+  `min_median_volume` floor would discard them anyway, so they are fetch calls
+  spent to produce nothing.
+- **Liquidity.** Nearly everything worth screening is listed on both, and NSE
+  carries the overwhelming majority of cash-market turnover. Screening the BSE
+  line of a dual-listed stock gives you the thinner of two prices for the same
+  company.
+
+Membership comes from NSE's own
+[`EQUITY_L.csv`](https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv),
+which unlike the ASX company directory classifies its own rows: the `SERIES`
+column says what kind of line each symbol is. The refresh keeps `EQ` (normal
+rolling settlement) and `BE` (trade-for-trade) — a stock moves between those
+two under surveillance without ceasing to be ordinary equity, so excluding
+`BE` would silently drop a name for the weeks it sits there. The SME platform
+(`SM`, `ST`) is excluded: its market lot is thousands of shares, so screen
+volume is not comparable to the main board.
+
+NSE rejects scripted downloads more often than not. Save the file from a
+browser and pass it in:
+
+```bash
+uv run scripts/refresh_universe.py --exchange NSE --instrument-type stocks \
+    --from-file EQUITY_L.csv --dry-run
+```
+
+**`config/nse_stocks.csv` ships as a 50-name seed, not the exchange.** It
+holds large, liquid NSE listings so the pipeline is runnable immediately; it
+is not a claim about index membership and it was not built from an exchange
+file. Run the refresh above to replace it with the real list.
+
+Two settings differ from the US config, both because prices are in rupees and
+the floor is denominated in the exchange's own currency:
+
+| | US | NSE | Why |
+|---|---|---|---|
+| `min_price` | 10.0 | **100.0** | ₹10 is about 11 US cents and excludes nothing. ₹100 is roughly where ordinary mid-caps stop and the penny tail starts. |
+| `include_universe_history` | off | off | ~2,000 tickers would make this table ~5x the ASX one, whose 450 ETFs are the reason it is on there. |
+
+India keeps ~16 market holidays a year against the US's ~10, and expected
+sessions are counted as plain weekdays, so `observation_ratio` reads about 6%
+low here rather than 4%. Both sit far above `min_observation_ratio: 0.5`,
+which exists to catch a ticker with two prints a year apart rather than to
+model a holiday calendar.
 
 ### ASX coverage
 

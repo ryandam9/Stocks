@@ -170,7 +170,9 @@ else
     sqlite3 "$TMP_DB" <<SQL
 DROP TABLE IF EXISTS consistent_growth_stocks;
 CREATE TABLE consistent_growth_stocks AS
-  SELECT ticker, name, exchange, pct_change AS pct_change_shortest_window,
+  SELECT ticker, name, exchange, issuer, category,
+         pct_change AS pct_change_shortest_window,
+         threshold AS threshold_shortest_window,
          data_as_of, run_id
   FROM "${PREFIX}_growth_${CONSISTENT_LABELS[-1]}"
   WHERE ticker IN ($INTERSECT_SQL)

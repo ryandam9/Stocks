@@ -7,7 +7,7 @@ in production.
 
 import pytest
 
-from symbol_directory import parse_asx_directory, parse_asx_report_text
+from symbol_directory import parse_asx_directory, parse_asx_report_text, parse_nse_directory
 
 # The static export the ASX used to publish: a title block, then a header
 # leading with the company name.
@@ -167,3 +167,56 @@ def test_a_file_with_no_product_rows_is_an_error():
     """A cover page or a failed text extraction must not read as an empty ASX."""
     with pytest.raises(ValueError, match="no product rows"):
         parse_asx_report_text("Investment Product Summary - July 2026\nTOTAL 591\n")
+
+
+# ------------------------------------- NSE
+
+# EQUITY_L.csv as NSE publishes it: every column name after the first carries
+# a leading space, which is why the parser matches headers stripped rather
+# than exactly.
+EQUITY_L = """SYMBOL, NAME OF COMPANY, SERIES, DATE OF LISTING, PAID UP VALUE, MARKET LOT, ISIN NUMBER, FACE VALUE
+RELIANCE, Reliance Industries Limited, EQ, 29-NOV-1995, 10, 1, INE002A01018, 10
+TCS, Tata Consultancy Services Limited, EQ, 25-AUG-2004, 1, 1, INE467B01029, 1
+YAARI, Yaari Digital Integrated Services Limited, BE, 30-SEP-2011, 1, 1, INE719F01012, 1
+SOMETHINGSME, A Small And Medium Enterprise Limited, SM, 01-JAN-2024, 10, 1000, INE000X01011, 10
+"""
+
+
+def test_nse_directory_keeps_ordinary_equity():
+    frame = parse_nse_directory(EQUITY_L)
+
+    assert list(frame["ticker"]) == ["RELIANCE", "TCS", "YAARI"]
+    assert frame.iloc[0]["name"] == "Reliance Industries Limited"
+    # The series already answered this, so nothing is inferred from the name.
+    assert set(frame["asset_type"]) == {"common_stock"}
+    assert set(frame["exchange"]) == {"NSE"}
+
+
+def test_nse_keeps_trade_for_trade_shares():
+    """BE is a surveillance state, not a different security.
+
+    A stock moves between EQ and BE without ceasing to be ordinary equity, so
+    excluding BE would silently drop a name for the weeks it sits there.
+    """
+    assert "YAARI" in set(parse_nse_directory(EQUITY_L)["ticker"])
+
+
+def test_nse_excludes_the_sme_platform():
+    """SME lots are thousands of shares, so screen volume is not comparable."""
+    assert "SOMETHINGSME" not in set(parse_nse_directory(EQUITY_L)["ticker"])
+
+
+def test_nse_series_filter_is_configurable():
+    frame = parse_nse_directory(EQUITY_L, series={"SM"})
+    assert list(frame["ticker"]) == ["SOMETHINGSME"]
+
+
+def test_a_file_that_is_not_equity_l_is_an_error():
+    """An index export or the wrong download must not read as an empty NSE."""
+    with pytest.raises(ValueError, match="no SYMBOL column"):
+        parse_nse_directory("Index Name,Open,High,Low,Close\nNIFTY 50,1,2,3,4\n")
+
+
+def test_a_file_with_no_equity_series_is_an_error():
+    with pytest.raises(ValueError, match="no rows in series"):
+        parse_nse_directory("SYMBOL, NAME OF COMPANY, SERIES\nSMEONE, An SME Limited, SM\n")

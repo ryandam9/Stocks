@@ -1,0 +1,51 @@
+ticker,name,exchange,asset_type,issuer,category,currency,source_date
+RELIANCE,Reliance Industries Limited,NSE,common_stock,Reliance Industries Limited,,INR,2026-08-30
+TCS,Tata Consultancy Services Limited,NSE,common_stock,Tata Consultancy Services Limited,,INR,2026-08-30
+HDFCBANK,HDFC Bank Limited,NSE,common_stock,HDFC Bank Limited,,INR,2026-08-30
+ICICIBANK,ICICI Bank Limited,NSE,common_stock,ICICI Bank Limited,,INR,2026-08-30
+INFY,Infosys Limited,NSE,common_stock,Infosys Limited,,INR,2026-08-30
+BHARTIARTL,Bharti Airtel Limited,NSE,common_stock,Bharti Airtel Limited,,INR,2026-08-30
+SBIN,State Bank of India,NSE,common_stock,State Bank of India,,INR,2026-08-30
+HINDUNILVR,Hindustan Unilever Limited,NSE,common_stock,Hindustan Unilever Limited,,INR,2026-08-30
+ITC,ITC Limited,NSE,common_stock,ITC Limited,,INR,2026-08-30
+LT,Larsen & Toubro Limited,NSE,common_stock,Larsen & Toubro Limited,,INR,2026-08-30
+KOTAKBANK,Kotak Mahindra Bank Limited,NSE,common_stock,Kotak Mahindra Bank Limited,,INR,2026-08-30
+AXISBANK,Axis Bank Limited,NSE,common_stock,Axis Bank Limited,,INR,2026-08-30
+BAJFINANCE,Bajaj Finance Limited,NSE,common_stock,Bajaj Finance Limited,,INR,2026-08-30
+MARUTI,Maruti Suzuki India Limited,NSE,common_stock,Maruti Suzuki India Limited,,INR,2026-08-30
+SUNPHARMA,Sun Pharmaceutical Industries Limited,NSE,common_stock,Sun Pharmaceutical Industries Limited,,INR,2026-08-30
+HCLTECH,HCL Technologies Limited,NSE,common_stock,HCL Technologies Limited,,INR,2026-08-30
+ASIANPAINT,Asian Paints Limited,NSE,common_stock,Asian Paints Limited,,INR,2026-08-30
+TITAN,Titan Company Limited,NSE,common_stock,Titan Company Limited,,INR,2026-08-30
+ULTRACEMCO,UltraTech Cement Limited,NSE,common_stock,UltraTech Cement Limited,,INR,2026-08-30
+NTPC,NTPC Limited,NSE,common_stock,NTPC Limited,,INR,2026-08-30
+ONGC,Oil & Natural Gas Corporation Limited,NSE,common_stock,Oil & Natural Gas Corporation Limited,,INR,2026-08-30
+POWERGRID,Power Grid Corporation of India Limited,NSE,common_stock,Power Grid Corporation of India Limited,,INR,2026-08-30
+COALINDIA,Coal India Limited,NSE,common_stock,Coal India Limited,,INR,2026-08-30
+WIPRO,Wipro Limited,NSE,common_stock,Wipro Limited,,INR,2026-08-30
+NESTLEIND,Nestle India Limited,NSE,common_stock,Nestle India Limited,,INR,2026-08-30
+TATAMOTORS,Tata Motors Limited,NSE,common_stock,Tata Motors Limited,,INR,2026-08-30
+TATASTEEL,Tata Steel Limited,NSE,common_stock,Tata Steel Limited,,INR,2026-08-30
+JSWSTEEL,JSW Steel Limited,NSE,common_stock,JSW Steel Limited,,INR,2026-08-30
+HINDALCO,Hindalco Industries Limited,NSE,common_stock,Hindalco Industries Limited,,INR,2026-08-30
+ADANIENT,Adani Enterprises Limited,NSE,common_stock,Adani Enterprises Limited,,INR,2026-08-30
+ADANIPORTS,Adani Ports and Special Economic Zone Limited,NSE,common_stock,Adani Ports and Special Economic Zone Limited,,INR,2026-08-30
+GRASIM,Grasim Industries Limited,NSE,common_stock,Grasim Industries Limited,,INR,2026-08-30
+INDUSINDBK,IndusInd Bank Limited,NSE,common_stock,IndusInd Bank Limited,,INR,2026-08-30
+BAJAJFINSV,Bajaj Finserv Limited,NSE,common_stock,Bajaj Finserv Limited,,INR,2026-08-30
+BAJAJ-AUTO,Bajaj Auto Limited,NSE,common_stock,Bajaj Auto Limited,,INR,2026-08-30
+HEROMOTOCO,Hero MotoCorp Limited,NSE,common_stock,Hero MotoCorp Limited,,INR,2026-08-30
+EICHERMOT,Eicher Motors Limited,NSE,common_stock,Eicher Motors Limited,,INR,2026-08-30
+BRITANNIA,Britannia Industries Limited,NSE,common_stock,Britannia Industries Limited,,INR,2026-08-30
+CIPLA,Cipla Limited,NSE,common_stock,Cipla Limited,,INR,2026-08-30
+DRREDDY,Dr. Reddy's Laboratories Limited,NSE,common_stock,Dr. Reddy's Laboratories Limited,,INR,2026-08-30
+DIVISLAB,Divi's Laboratories Limited,NSE,common_stock,Divi's Laboratories Limited,,INR,2026-08-30
+APOLLOHOSP,Apollo Hospitals Enterprise Limited,NSE,common_stock,Apollo Hospitals Enterprise Limited,,INR,2026-08-30
+BPCL,Bharat Petroleum Corporation Limited,NSE,common_stock,Bharat Petroleum Corporation Limited,,INR,2026-08-30
+TECHM,Tech Mahindra Limited,NSE,common_stock,Tech Mahindra Limited,,INR,2026-08-30
+SBILIFE,SBI Life Insurance Company Limited,NSE,common_stock,SBI Life Insurance Company Limited,,INR,2026-08-30
+HDFCLIFE,HDFC Life Insurance Company Limited,NSE,common_stock,HDFC Life Insurance Company Limited,,INR,2026-08-30
+TATACONSUM,Tata Consumer Products Limited,NSE,common_stock,Tata Consumer Products Limited,,INR,2026-08-30
+SHRIRAMFIN,Shriram Finance Limited,NSE,common_stock,Shriram Finance Limited,,INR,2026-08-30
+TRENT,Trent Limited,NSE,common_stock,Trent Limited,,INR,2026-08-30
+M&M,Mahindra & Mahindra Limited,NSE,common_stock,Mahindra & Mahindra Limited,,INR,2026-08-30
