@@ -148,6 +148,50 @@ def test_a_bare_string_exclude_category_is_rejected(tmp_path, monkeypatch):
         load_config("US", "stocks")
 
 
+def test_no_price_ceiling_by_default(tmp_path, monkeypatch):
+    write_config(tmp_path, monkeypatch, BASE)
+    assert load_config("US", "stocks").analysis.max_price is None
+
+
+def test_an_inverted_price_band_is_rejected(tmp_path, monkeypatch):
+    """A band nothing can satisfy would report itself as "no ticker grew"."""
+    body = {"config": {**BASE["config"], "analysis": {"min_price": 100.0, "max_price": 50.0}}}
+    write_config(tmp_path, monkeypatch, body)
+    with pytest.raises(ValueError, match="max_price .* must be above min_price"):
+        load_config("US", "stocks")
+
+
+def test_a_window_may_lift_the_ceiling(tmp_path, monkeypatch):
+    """max_price is the one overridable setting whose value can be null."""
+    from config import settings_for_window
+
+    body = {
+        "config": {
+            **BASE["config"],
+            "analysis": {
+                "max_price": 500.0,
+                "windows": [
+                    {"months": 12, "label": "1_year", "threshold": 25.0},
+                    {"days": 7, "label": "7_days", "threshold": 10.0, "max_price": None},
+                ],
+            },
+        }
+    }
+    write_config(tmp_path, monkeypatch, body)
+    analysis = load_config("US", "stocks").analysis
+
+    assert analysis.max_price == 500.0
+    assert settings_for_window(analysis, analysis.windows[0]).max_price == 500.0
+    assert settings_for_window(analysis, analysis.windows[1]).max_price is None
+
+
+def test_the_nse_config_carries_the_affordability_ceiling():
+    """The setting that motivated the feature, pinned where it is used."""
+    analysis = load_config("NSE", "stocks").analysis
+    assert analysis.max_price == 500.0
+    assert analysis.min_price < analysis.max_price
+
+
 def test_code_revision_prefers_the_baked_in_value(monkeypatch):
     """Containers exclude .git, so git cannot answer; the image bakes it in."""
     import runmeta

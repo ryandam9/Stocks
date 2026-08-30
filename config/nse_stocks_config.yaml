@@ -27,6 +27,18 @@ config:
     # the level below which NSE listings stop being ordinary mid-caps and
     # start being the penny tail, where a percentage move is a tick.
     min_price: 100.0
+    # Highest latest price to report. Not a data-quality rule -- an expensive
+    # share is not a worse signal than a cheap one -- but an affordability
+    # one: India's cash market has no fractional shares and a lot size of 1,
+    # so the share price is the smallest ticket that can be bought. Listing
+    # MARUTI at Rs 33,000 is listing something this screen's reader cannot
+    # act on.
+    #
+    # Rs 500 deliberately excludes most of the large-cap index. RELIANCE, TCS,
+    # INFY and MARUTI all trade above it, so this is a small- and mid-cap
+    # screen by construction. Raise or remove the line to get them back;
+    # nothing is lost from the fetch, so a change here needs re-analysis only.
+    max_price: 500.0
     # NSE turnover is concentrated: the index names trade in the millions of
     # shares a day while the long tail barely trades. This floor removes the
     # dormant tail without touching anything a retail order could fill.

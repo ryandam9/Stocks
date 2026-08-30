@@ -149,6 +149,14 @@ class AnalysisSettings:
     # names being treated as meaningful. Denominated in the exchange's own
     # currency, so it is per-config rather than a global constant.
     min_price: float = 10.0
+    # Highest latest price to report, or None for no ceiling. Unlike every
+    # other setting here this one is not about data quality -- an expensive
+    # share is not a worse signal than a cheap one. It exists because India's
+    # cash market has no fractional shares and a lot size of 1, so the share
+    # price *is* the smallest ticket you can buy: a screen listing a Rs 33,000
+    # stock is listing something its reader cannot act on. Off by default, so
+    # a universe with no such constraint is unchanged.
+    max_price: float | None = None
     # Minimum median daily volume over the window; illiquid tickers produce
     # percentages that cannot actually be traded.
     min_median_volume: float = 50_000.0
@@ -231,6 +239,7 @@ UNIVERSE_HISTORY_MONTHS = 12
 
 WINDOW_OVERRIDABLE = (
     "min_price",
+    "max_price",
     "min_median_volume",
     "min_coverage",
     "min_observation_ratio",
@@ -243,10 +252,15 @@ def settings_for_window(settings: "AnalysisSettings", window: dict) -> "Analysis
     overrides = {k: window[k] for k in WINDOW_OVERRIDABLE if k in window}
     if not overrides:
         return settings
-    return replace(
-        settings,
-        **{k: int(v) if k == "endpoint_window" else float(v) for k, v in overrides.items()},
-    )
+
+    def coerce(key, value):
+        # A window may lift the ceiling by writing `max_price: null`, which is
+        # the one override whose value is legitimately None.
+        if value is None:
+            return None
+        return int(value) if key == "endpoint_window" else float(value)
+
+    return replace(settings, **{k: coerce(k, v) for k, v in overrides.items()})
 
 
 @dataclass
@@ -550,6 +564,17 @@ def load_config(exchange: str, instrument_type: str) -> StockConfig:
     _require_non_negative(analysis_raw, "min_price", path)
     _require_non_negative(analysis_raw, "min_median_volume", path)
 
+    if analysis_raw.get("max_price") is not None:
+        _require_positive(analysis_raw, "max_price", path)
+        # An inverted band matches nothing, and would report it as "no ticker
+        # grew" rather than as the configuration error it is.
+        floor = float(analysis_raw.get("min_price", 10.0))
+        if float(analysis_raw["max_price"]) <= floor:
+            raise ValueError(
+                f"{path}: max_price ({analysis_raw['max_price']}) must be above "
+                f"min_price ({floor}); as written no price can satisfy both."
+            )
+
     if "include_price_history" in analysis_raw and not isinstance(
         analysis_raw["include_price_history"], bool
     ):
@@ -639,6 +664,9 @@ def load_config(exchange: str, instrument_type: str) -> StockConfig:
 
     analysis = AnalysisSettings(
         min_price=float(analysis_raw.get("min_price", 10.0)),
+        max_price=(
+            float(analysis_raw["max_price"]) if analysis_raw.get("max_price") is not None else None
+        ),
         min_median_volume=float(analysis_raw.get("min_median_volume", 50_000.0)),
         min_coverage=float(analysis_raw.get("min_coverage", 0.8)),
         endpoint_window=int(analysis_raw.get("endpoint_window", 3)),

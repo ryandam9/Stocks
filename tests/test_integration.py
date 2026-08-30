@@ -367,6 +367,37 @@ def test_screening_geared_funds_is_one_config_line_away(tmp_path, monkeypatch):
     assert rows[0]["category"] == "leveraged"
 
 
+def test_a_price_ceiling_keeps_out_what_cannot_be_bought(tmp_path, monkeypatch):
+    """Affordability, not data quality.
+
+    India's cash market has no fractional shares and a lot size of 1, so the
+    share price is the smallest ticket. A screen that reports a Rs 33,000
+    stock to someone with Rs 500 is reporting something they cannot act on.
+    """
+    cfg = build_project(tmp_path, monkeypatch, min_price=0.0, max_price=500.0)
+    write_universe(cfg, [("CHEAP", "Cheap Inc"), ("DEAR", "Dear Inc")])
+
+    frames = [
+        make_series("CHEAP", "Cheap Inc", "2026-05-01", "2026-06-02", 100, 400),
+        # Same percentage move, out of reach.
+        make_series("DEAR", "Dear Inc", "2026-05-01", "2026-06-02", 2000, 8000),
+    ]
+    write_prices(cfg, pd.concat(frames, ignore_index=True))
+    analyze_stocks(cfg, allow_stale=True)
+
+    assert {r["ticker"] for r in read_csv_rows(cfg.growth_csv("1_month"))} == {"CHEAP"}
+
+
+def test_no_ceiling_by_default(tmp_path, monkeypatch):
+    """A universe with no affordability constraint must be unchanged."""
+    cfg = build_project(tmp_path, monkeypatch, min_price=0.0)
+    write_universe(cfg, [("DEAR", "Dear Inc")])
+    write_prices(cfg, make_series("DEAR", "Dear Inc", "2026-05-01", "2026-06-02", 2000, 8000))
+    analyze_stocks(cfg, allow_stale=True)
+
+    assert [r["ticker"] for r in read_csv_rows(cfg.growth_csv("1_month"))] == ["DEAR"]
+
+
 # ---------------------------------------------------------------- STK-011 / STK-015
 
 
@@ -390,6 +421,7 @@ def test_funnel_reports_every_rule(build_frame, latest_date):
         "Adjusted prices",
         "Liquid enough",
         "Above price floor",
+        "Below price ceiling",
         "Valid baseline",
         "Return above 25.0%",
     ]
